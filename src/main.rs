@@ -1,7 +1,7 @@
 use std::fs;
 
 use clap::{Parser, Subcommand};
-use malatium::lexer::Lexer;
+use olivia::lexer::Lexer;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -26,6 +26,7 @@ fn main() {
         Commands::Tokenize { filename } => {
             let source = fs::read_to_string(filename).unwrap();
             let lex = Lexer::new(&source);
+
             for res in lex {
                 match res {
                     Ok(tok) => {

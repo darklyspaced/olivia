@@ -5,6 +5,7 @@ use crate::error::Error;
 pub struct Lexer<'de> {
     whole: &'de str,
     rest: &'de str,
+    offset: usize,
 }
 
 impl<'de> Lexer<'de> {
@@ -12,12 +13,19 @@ impl<'de> Lexer<'de> {
         Self {
             whole: source,
             rest: source,
+            offset: 0,
         }
     }
 }
 
-#[derive(Debug)]
-pub enum Token<'de> {
+pub struct Token<'de> {
+    pub kind: TokenKind,
+    pub lexeme: &'de str,
+    pub literal: Option<&'de str>,
+}
+
+#[derive(strum_macros::Display, Debug)]
+pub enum TokenKind {
     LeftParen,
     RightParen,
     LeftBrace,
@@ -27,57 +35,62 @@ pub enum Token<'de> {
     Plus,
     Minus,
     Star,
-    BangEqual,
-    EqualEqual,
-    LessEqual,
-    GreaterEqual,
     Less,
     Greater,
     Slash,
     Dot,
-    Literal(&'de str),
 }
 
 impl<'de> Iterator for Lexer<'de> {
     type Item = Result<Token<'de>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut chars = self.rest.char_indices();
-        let (offset, c) = chars.next()?;
+        let mut chars = self.rest.chars();
+        let c = chars.next()?;
+
+        self.offset += c.len_utf8();
+        let c_str = &self.rest[..c.len_utf8()];
         self.rest = chars.as_str();
 
+        let bare = |kind: TokenKind| {
+            Some(Ok(Token {
+                kind,
+                lexeme: c_str,
+                literal: None,
+            }))
+        };
+
         match c {
-            '(' => Some(Ok(Token::LeftParen)),
-            ')' => Some(Ok(Token::RightParen)),
+            '(' => bare(TokenKind::LeftParen),
+            ')' => bare(TokenKind::RightParen),
+            '{' => bare(TokenKind::LeftBrace),
+            '}' => bare(TokenKind::RightBrace),
+            ';' => bare(TokenKind::Semicolon),
+            ',' => bare(TokenKind::Comma),
+            '+' => bare(TokenKind::Plus),
+            '-' => bare(TokenKind::Minus),
+            '*' => bare(TokenKind::Star),
+            '<' => bare(TokenKind::Less),
+            '>' => bare(TokenKind::Greater),
+            '/' => bare(TokenKind::Slash),
+            '.' => bare(TokenKind::Dot),
+            '\n' => Self::next(self),
             _ => Some(Err(Error {
                 source: self.whole.to_string(),
-                error: offset..(offset + c.len_utf8()),
+                error: self.offset - c.len_utf8()..self.offset,
             })),
         }
     }
 }
 
-impl<'de> Display for Token<'de> {
+impl Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::LeftParen => writeln!(f, "LEFT_PAREN ( null"),
-            Self::RightParen => writeln!(f, "RIGHT_PAREN ) null"),
-            Self::LeftBrace => writeln!(f, "LEFT_BRACE {{ null"),
-            Self::RightBrace => writeln!(f, "RIGHT_BRACE }} null"),
-            Self::Semicolon => writeln!(f, "SEMICOLON ; null"),
-            Self::Comma => writeln!(f, "COMMA , null"),
-            Self::Plus => writeln!(f, "PLUS + null"),
-            Self::Minus => writeln!(f, "MINUS - null"),
-            Self::Star => writeln!(f, "STAR * null"),
-            Self::EqualEqual => writeln!(f, "EQUAL_EQUAL == null"),
-            Self::LessEqual => writeln!(f, "LESS_EQUAL <= null"),
-            Self::GreaterEqual => writeln!(f, "GREATER_EQUAL >= null"),
-            Self::BangEqual => writeln!(f, "BANG_EQUAL != null"),
-            Self::Less => writeln!(f, "LESS < null"),
-            Self::Greater => writeln!(f, "GREATER > null"),
-            Self::Slash => writeln!(f, "SLASH / null"),
-            Self::Dot => writeln!(f, "DOT . null"),
-            Self::Literal(s) => writeln!(f, "LITERAL \"{s}\" {s}"),
-        }
+        writeln!(
+            f,
+            "{} {} {}",
+            self.kind,
+            self.lexeme,
+            self.literal.unwrap_or("_")
+        )
     }
 }
