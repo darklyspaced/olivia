@@ -11,29 +11,35 @@ impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "ERROR:")?;
 
-        let (mut left_pad, err_len) = (0, self.error.end - self.error.start);
+        let mut offset = 0;
+        let line = self
+            .source
+            .lines()
+            .enumerate()
+            .find(|(_, line)| {
+                offset += line.len();
+                offset >= self.error.start
+            })
+            .expect("offset not in source");
 
-        let hi = self.source[..self.error.start]
-            .chars()
-            .rev()
-            .take_while(|c| *c != '\n')
-            .inspect(|_| left_pad += 1);
-        let lo = self.source[self.error.end..]
-            .chars()
-            .take_while(|c| *c != '\n');
-        let context = hi
-            .chain(self.source[self.error.start..self.error.end].chars())
-            .chain(lo)
-            .collect::<String>();
+        writeln!(f, "{}| {}", line.0 + 1, line.1)?;
+        write!(f, "   ")?; // on account of ln_num
 
-        writeln!(f, "{}", context)?;
+        offset -= line.1.len();
+        // the '\n's are removed so they need to be accounted for
+        let end = self.error.end - offset - line.0;
+        let start = self.error.start - offset - line.0;
 
-        for _ in 0..left_pad {
-            write!(f, " ")?;
+        for (pos, c) in line.1.char_indices() {
+            if pos < start {
+                if c != '\n' {
+                    write!(f, " ")?;
+                }
+            } else if start <= pos && pos < end {
+                write!(f, "^")?;
+            }
         }
-        for _ in 0..err_len {
-            write!(f, "^")?;
-        }
+
         Ok(())
     }
 }
