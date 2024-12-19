@@ -1,17 +1,23 @@
-use std::{fmt::Display, str};
+use std::{fmt::Display, path::Path, str};
 
-use crate::error::Error;
+use crate::{error::Error, source::SourceMap};
 
 pub struct Lexer<'de> {
-    whole: &'de str,
+    /// Holds the whole parts of all sources
+    source_map: &'de SourceMap,
+    /// Index into source_map of current sources being lexed
+    path: &'de Path,
+    /// Rest of source left to lex
     rest: &'de str,
+    /// Byte offset into whole source
     offset: usize,
 }
 
 impl<'de> Lexer<'de> {
-    pub fn new(source: &'de str) -> Self {
+    pub fn new(source: &'de str, path: &'de Path, source_map: &'de SourceMap) -> Self {
         Self {
-            whole: source,
+            source_map,
+            path,
             rest: source,
             offset: 0,
         }
@@ -76,7 +82,8 @@ impl<'de> Iterator for Lexer<'de> {
             '.' => bare(TokenKind::Dot),
             '\n' => Self::next(self),
             _ => Some(Err(Error {
-                source: self.whole.to_string(),
+                path: self.path.to_path_buf(),
+                source: self.source_map.get(self.path).to_string(),
                 error: self.offset - c.len_utf8()..self.offset,
             })),
         }
@@ -90,7 +97,7 @@ impl Display for Token<'_> {
             "{} {} {}",
             self.kind,
             self.lexeme,
-            self.literal.unwrap_or("_")
+            self.literal.unwrap_or("")
         )
     }
 }
