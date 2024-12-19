@@ -1,10 +1,7 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use olivia::{lexer::Lexer, source::SourceMap};
+use olivia::source::SourceMap;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]

@@ -1,6 +1,9 @@
 use std::{fmt::Display, path::Path, str};
 
-use crate::{error::Error, source::SourceMap};
+use crate::{
+    error::{Error, ErrorKind},
+    source::SourceMap,
+};
 
 pub struct Lexer<'de> {
     /// Holds the whole parts of all sources
@@ -43,7 +46,6 @@ pub enum TokenKind {
     Star,
     Less,
     Greater,
-    Slash,
     Dot,
 }
 
@@ -78,10 +80,10 @@ impl<'de> Iterator for Lexer<'de> {
             '*' => bare(TokenKind::Star),
             '<' => bare(TokenKind::Less),
             '>' => bare(TokenKind::Greater),
-            '/' => bare(TokenKind::Slash),
             '.' => bare(TokenKind::Dot),
             '\n' => Self::next(self),
             _ => Some(Err(Error {
+                kind: ErrorKind::UnexpectedCharacter,
                 path: self.path.to_path_buf(),
                 source: self.source_map.get(self.path).to_string(),
                 error: self.offset - c.len_utf8()..self.offset,
