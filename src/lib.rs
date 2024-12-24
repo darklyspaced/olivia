@@ -1,3 +1,3 @@
+#![feature(let_chains)]
 pub mod error;
 pub mod lexer;
-pub mod source;

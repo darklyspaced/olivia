@@ -1,29 +1,62 @@
-use std::{fmt::Display, path::Path, str};
-
-use crate::{
-    error::{Error, ErrorKind},
-    source::SourceMap,
+use std::{
+    fmt::Display,
+    path::Path,
+    str::{self, CharIndices, Chars},
 };
 
+use crate::error::{Error, ErrorKind};
+
 pub struct Lexer<'de> {
-    /// Holds the whole parts of all sources
-    source_map: &'de SourceMap,
-    /// Index into source_map of current sources being lexed
     path: &'de Path,
-    /// Rest of source left to lex
-    rest: &'de str,
-    /// Byte offset into whole source
-    offset: usize,
+    source: &'de str,
+    chars: Scanner<'de>,
 }
 
 impl<'de> Lexer<'de> {
-    pub fn new(source: &'de str, path: &'de Path, source_map: &'de SourceMap) -> Self {
+    pub fn new(source: &'de str, path: &'de Path) -> Self {
         Self {
-            source_map,
             path,
-            rest: source,
-            offset: 0,
+            source,
+            chars: Scanner::new(source),
         }
+    }
+}
+
+impl Iterator for Scanner<'_> {
+    type Item = char;
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut offset = |x: Option<Self::Item>| x.inspect(|c| self.offset += c.len_utf8());
+
+        match self.peeked.take() {
+            Some(x) => offset(x),
+            None => offset(self.iter.next()),
+        }
+    }
+}
+
+/// Needed because Peekable<> hides the essential methods required by
+#[derive(Debug)]
+struct Scanner<'de> {
+    iter: Chars<'de>,
+    peeked: Option<Option<<Self as Iterator>::Item>>,
+    offset: usize,
+}
+
+impl<'de> Scanner<'de> {
+    pub fn new(source: &'de str) -> Self {
+        Self {
+            peeked: None,
+            offset: 0,
+            iter: source.chars(),
+        }
+    }
+
+    pub fn peek(&mut self) -> Option<&<Self as Iterator>::Item> {
+        self.peeked.get_or_insert_with(|| self.iter.next()).as_ref()
+    }
+
+    pub fn offset(&self) -> usize {
+        self.offset
     }
 }
 
@@ -44,29 +77,44 @@ pub enum TokenKind {
     Plus,
     Minus,
     Star,
-    Less,
-    Greater,
     Dot,
+    Equal,
+    EqualEqual,
+    Bang,
+    BangEqual,
+    Greater,
+    GreaterEqual,
+    Less,
+    LessEqual,
+    Slash,
 }
 
 impl<'de> Iterator for Lexer<'de> {
     type Item = Result<Token<'de>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut chars = self.rest.chars();
-        let c = chars.next()?;
-
-        self.offset += c.len_utf8();
-        let c_str = &self.rest[..c.len_utf8()];
-        self.rest = chars.as_str();
+        let (start, c) = (self.chars.offset, self.chars.next()?);
 
         let bare = |kind: TokenKind| {
             Some(Ok(Token {
                 kind,
-                lexeme: c_str,
+                lexeme: &self.source[start..start + c.len_utf8()],
                 literal: None,
             }))
         };
+        let mut branching =
+        // TODO: rewrite this with peek method
+            |single: TokenKind, predicate: char, branch: TokenKind| match self.chars.peek() {
+                Some(x) if *x == predicate => {
+                    let c = self.chars.next()?;
+                    Some(Ok(Token {
+                        kind: branch,
+                        lexeme: &self.source[start..self.chars.offset + c.len_utf8()],
+                        literal: None,
+                    }))
+                }
+                _ => bare(single),
+            };
 
         match c {
             '(' => bare(TokenKind::LeftParen),
@@ -78,15 +126,33 @@ impl<'de> Iterator for Lexer<'de> {
             '+' => bare(TokenKind::Plus),
             '-' => bare(TokenKind::Minus),
             '*' => bare(TokenKind::Star),
-            '<' => bare(TokenKind::Less),
-            '>' => bare(TokenKind::Greater),
             '.' => bare(TokenKind::Dot),
-            '\n' => Self::next(self),
+            '=' => branching(TokenKind::Equal, '=', TokenKind::EqualEqual),
+            '!' => branching(TokenKind::Bang, '=', TokenKind::BangEqual),
+            '>' => branching(TokenKind::Greater, '=', TokenKind::GreaterEqual),
+            '<' => branching(TokenKind::Less, '=', TokenKind::LessEqual),
+            '/' => match self.chars.peek() {
+                Some('/') => {
+                    let _ = self.chars.by_ref().skip_while(|c| *c != '\n');
+                    Self::next(self)
+                }
+                _ => bare(TokenKind::Slash),
+            },
+            '"' => {
+                dbg!(&self.chars);
+                while let Some(x) = self.chars.next()
+                    && x != '"'
+                {}
+                // if None, then we're fucked
+                let literal = &self.source[dbg!(start..self.chars.offset)];
+                None
+            }
+            c if c.is_whitespace() => Self::next(self),
             _ => Some(Err(Error {
                 kind: ErrorKind::UnexpectedCharacter,
                 path: self.path.to_path_buf(),
-                source: self.source_map.get(self.path).to_string(),
-                error: self.offset - c.len_utf8()..self.offset,
+                source: self.source.to_string(),
+                error: start..start + c.len_utf8(),
             })),
         }
     }

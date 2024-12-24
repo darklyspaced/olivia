@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use std::{fs::read_to_string, path::Path};
 
 use clap::{Parser, Subcommand};
-use olivia::source::SourceMap;
+use olivia::lexer::Lexer;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -24,19 +24,16 @@ fn main() {
 
     match &malatium.command {
         Commands::Tokenize { filename } => {
-            let path = PathBuf::from(filename);
-            let source_map = SourceMap::new(vec![path]);
-            let lexed = source_map.lex();
+            let source = read_to_string(filename).expect("failed to read file");
+            let lexer = Lexer::new(&source, Path::new(filename));
 
-            for lex in lexed {
-                for res in lex {
-                    match res {
-                        Ok(tok) => {
-                            println!("{}", tok);
-                        }
-                        Err(e) => {
-                            println!("{}", e);
-                        }
+            for res in lexer {
+                match res {
+                    Ok(tok) => {
+                        println!("{}", tok);
+                    }
+                    Err(e) => {
+                        println!("{}", e);
                     }
                 }
             }
