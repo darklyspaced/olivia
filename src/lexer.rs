@@ -1,8 +1,4 @@
-use std::{
-    fmt::Display,
-    path::Path,
-    str::{self, CharIndices, Chars},
-};
+use std::{fmt::Display, path::Path, str::Chars};
 
 use crate::error::{Error, ErrorKind};
 
@@ -25,7 +21,12 @@ impl<'de> Lexer<'de> {
 impl Iterator for Scanner<'_> {
     type Item = char;
     fn next(&mut self) -> Option<Self::Item> {
-        let mut offset = |x: Option<Self::Item>| x.inspect(|c| self.offset += c.len_utf8());
+        let mut offset = |x: Option<Self::Item>| {
+            x.inspect(|c| {
+                self.offset += self.prev;
+                self.prev = c.len_utf8();
+            })
+        };
 
         match self.peeked.take() {
             Some(x) => offset(x),
@@ -34,11 +35,11 @@ impl Iterator for Scanner<'_> {
     }
 }
 
-/// Needed because Peekable<> hides the essential methods required by
 #[derive(Debug)]
 struct Scanner<'de> {
     iter: Chars<'de>,
     peeked: Option<Option<<Self as Iterator>::Item>>,
+    prev: usize,
     offset: usize,
 }
 
@@ -46,6 +47,7 @@ impl<'de> Scanner<'de> {
     pub fn new(source: &'de str) -> Self {
         Self {
             peeked: None,
+            prev: 0,
             offset: 0,
             iter: source.chars(),
         }
@@ -55,8 +57,34 @@ impl<'de> Scanner<'de> {
         self.peeked.get_or_insert_with(|| self.iter.next()).as_ref()
     }
 
-    pub fn offset(&self) -> usize {
-        self.offset
+    pub fn next_if_eq<T>(&mut self, expected: &T) -> Option<<Self as Iterator>::Item>
+    where
+        T: ?Sized,
+        <Self as Iterator>::Item: PartialEq<T>,
+    {
+        self.next_if(|next| next == expected)
+    }
+
+    pub fn next_if_neq<T>(&mut self, not_expected: &T) -> Option<<Self as Iterator>::Item>
+    where
+        T: ?Sized,
+        <Self as Iterator>::Item: PartialEq<T>,
+    {
+        self.next_if(|next| next != not_expected)
+    }
+
+    fn next_if(
+        &mut self,
+        func: impl FnOnce(&<Self as Iterator>::Item) -> bool,
+    ) -> Option<<Self as Iterator>::Item> {
+        // it's a problem that it calls self.next... messes things up!
+        match self.next() {
+            Some(matched) if func(&matched) => Some(matched),
+            other => {
+                self.peeked = Some(other);
+                None
+            }
+        }
     }
 }
 
@@ -87,13 +115,16 @@ pub enum TokenKind {
     Less,
     LessEqual,
     Slash,
+    String,
+    Number,
 }
 
 impl<'de> Iterator for Lexer<'de> {
     type Item = Result<Token<'de>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (start, c) = (self.chars.offset, self.chars.next()?);
+        let (c, start) = (self.chars.next()?, self.chars.offset);
+        dbg!(start);
 
         let bare = |kind: TokenKind| {
             Some(Ok(Token {
@@ -102,19 +133,24 @@ impl<'de> Iterator for Lexer<'de> {
                 literal: None,
             }))
         };
-        let mut branching =
-        // TODO: rewrite this with peek method
-            |single: TokenKind, predicate: char, branch: TokenKind| match self.chars.peek() {
-                Some(x) if *x == predicate => {
-                    let c = self.chars.next()?;
-                    Some(Ok(Token {
-                        kind: branch,
-                        lexeme: &self.source[start..self.chars.offset + c.len_utf8()],
-                        literal: None,
-                    }))
-                }
-                _ => bare(single),
-            };
+        let mut branching = |single: TokenKind, predicate: char, branch: TokenKind| match self
+            .chars
+            .next_if_eq(&predicate)
+        {
+            Some(_) => Some(Ok(Token {
+                kind: branch,
+                lexeme: &self.source[start..self.chars.offset],
+                literal: None,
+            })),
+            _ => bare(single),
+        };
+        let full = |kind: TokenKind, lexeme: &'de str, literal: &'de str| {
+            Some(Ok(Token {
+                kind,
+                lexeme,
+                literal: Some(literal),
+            }))
+        };
 
         match c {
             '(' => bare(TokenKind::LeftParen),
@@ -139,15 +175,19 @@ impl<'de> Iterator for Lexer<'de> {
                 _ => bare(TokenKind::Slash),
             },
             '"' => {
-                dbg!(&self.chars);
-                while let Some(x) = self.chars.next()
-                    && x != '"'
-                {}
-                // if None, then we're fucked
-                let literal = &self.source[dbg!(start..self.chars.offset)];
-                None
+                while self.chars.next_if_neq(&'"').is_some() {}
+
+                assert!(self.chars.next_if_eq(&'"').is_some());
+
+                let side = '"'.len_utf8();
+                let lexeme = &self.source[start..self.chars.offset];
+                let literal = &lexeme[side..];
+
+                dbg!(lexeme, literal);
+
+                full(TokenKind::String, lexeme, literal)
             }
-            c if c.is_whitespace() => Self::next(self),
+            x if x.is_whitespace() => Self::next(self),
             _ => Some(Err(Error {
                 kind: ErrorKind::UnexpectedCharacter,
                 path: self.path.to_path_buf(),
