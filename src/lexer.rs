@@ -118,13 +118,17 @@ pub enum TokenKind {
     String,
     Number,
     While,
+    For,
+    Ident,
+    Integer,
+    Float,
 }
 
 impl<'de> Iterator for Lexer<'de> {
     type Item = Result<Token<'de>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (c, start) = (self.chars.next()?, self.chars.offset());
+        let (mut c, mut start);
 
         macro_rules! token {
             ($kind:path) => {
@@ -165,6 +169,7 @@ impl<'de> Iterator for Lexer<'de> {
         }
 
         loop {
+            (c, start) = (self.chars.next()?, self.chars.offset());
             match c {
                 '(' => token!(TokenKind::LeftParen),
                 ')' => token!(TokenKind::RightParen),
@@ -175,7 +180,6 @@ impl<'de> Iterator for Lexer<'de> {
                 '+' => token!(TokenKind::Plus),
                 '-' => token!(TokenKind::Minus),
                 '*' => token!(TokenKind::Star),
-                '.' => token!(TokenKind::Dot),
                 '=' => token!(TokenKind::Equal, '=', TokenKind::EqualEqual),
                 '!' => token!(TokenKind::Bang, '=', TokenKind::BangEqual),
                 '>' => token!(TokenKind::Greater, '=', TokenKind::GreaterEqual),
@@ -204,11 +208,30 @@ impl<'de> Iterator for Lexer<'de> {
                 }
                 'a'..='z' | 'A'..='Z' => {
                     while self.chars.next_if(|c| !c.is_whitespace()).is_some() {}
-                    let lexeme = &self.source[start..=self.chars.offset()];
 
-                    match lexeme {
+                    match &self.source[start..=self.chars.offset()] {
                         "while" => token!(TokenKind::While),
-                        _ => unimplemented!(),
+                        "for" => token!(TokenKind::For),
+                        _ => token!(TokenKind::Ident),
+                    }
+                }
+                '.' => match self.chars.peek() {
+                    Some('1'..='9') => {
+                        while self.chars.next_if(|c| c.is_ascii_digit()).is_some() {}
+                        // TODO: need a better way for the below
+                        token!(TokenKind::Float, &self.source[start..=self.chars.offset()])
+                    }
+                    _ => token!(TokenKind::Dot),
+                },
+                '1'..='9' => {
+                    while self.chars.next_if(|c| c.is_ascii_digit()).is_some() {}
+
+                    match self.chars.next_if_eq(&'.') {
+                        Some(_) => {
+                            while self.chars.next_if(|c| c.is_ascii_digit()).is_some() {}
+                            token!(TokenKind::Float, &self.source[start..=self.chars.offset()])
+                        }
+                        _ => token!(TokenKind::Number, &self.source[start..=self.chars.offset()]),
                     }
                 }
                 x if x.is_whitespace() => continue,
