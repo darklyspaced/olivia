@@ -29,7 +29,8 @@ impl Iterator for Scanner<'_> {
         };
 
         match self.peeked.take() {
-            Some(x) => offset(x),
+            // in this case, self.next() has already been called
+            Some(x) => x,
             None => offset(self.iter.next()),
         }
     }
@@ -57,19 +58,11 @@ impl<'de> Scanner<'de> {
         self.peeked.get_or_insert_with(|| self.iter.next()).as_ref()
     }
 
-    pub fn next_if_eq<T>(&mut self, expected: &T) -> Option<<Self as Iterator>::Item>
-    where
-        T: ?Sized,
-        <Self as Iterator>::Item: PartialEq<T>,
-    {
+    pub fn next_if_eq(&mut self, expected: &char) -> Option<<Self as Iterator>::Item> {
         self.next_if(|next| next == expected)
     }
 
-    pub fn next_if_neq<T>(&mut self, not_expected: &T) -> Option<<Self as Iterator>::Item>
-    where
-        T: ?Sized,
-        <Self as Iterator>::Item: PartialEq<T>,
-    {
+    pub fn next_if_neq(&mut self, not_expected: &char) -> Option<<Self as Iterator>::Item> {
         self.next_if(|next| next != not_expected)
     }
 
@@ -77,7 +70,6 @@ impl<'de> Scanner<'de> {
         &mut self,
         func: impl FnOnce(&<Self as Iterator>::Item) -> bool,
     ) -> Option<<Self as Iterator>::Item> {
-        // it's a problem that it calls self.next... messes things up!
         match self.next() {
             Some(matched) if func(&matched) => Some(matched),
             other => {
@@ -85,6 +77,14 @@ impl<'de> Scanner<'de> {
                 None
             }
         }
+    }
+
+    fn offset(&self) -> usize {
+        self.offset
+            - match self.peeked {
+                Some(Some(c)) => c.len_utf8(),
+                _ => 0,
+            }
     }
 }
 
@@ -117,75 +117,89 @@ pub enum TokenKind {
     Slash,
     String,
     Number,
+    While,
 }
 
 impl<'de> Iterator for Lexer<'de> {
     type Item = Result<Token<'de>, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (c, start) = (self.chars.next()?, self.chars.offset);
-        dbg!(start);
+        let (c, start) = (self.chars.next()?, self.chars.offset());
 
-        let bare = |kind: TokenKind| {
-            Some(Ok(Token {
-                kind,
-                lexeme: &self.source[start..start + c.len_utf8()],
-                literal: None,
-            }))
-        };
-        let mut branching = |single: TokenKind, predicate: char, branch: TokenKind| match self
-            .chars
-            .next_if_eq(&predicate)
-        {
-            Some(_) => Some(Ok(Token {
-                kind: branch,
-                lexeme: &self.source[start..self.chars.offset],
-                literal: None,
-            })),
-            _ => bare(single),
-        };
-        let full = |kind: TokenKind, lexeme: &'de str, literal: &'de str| {
-            Some(Ok(Token {
-                kind,
-                lexeme,
-                literal: Some(literal),
-            }))
-        };
+        macro_rules! token {
+            ($kind:path) => {
+                Some(Ok(Token {
+                    kind: $kind,
+                    lexeme: &self.source[start..=self.chars.offset()],
+                    literal: None,
+                }))
+            };
+            ($single:path, $pred:expr, $branch:path) => {
+                match self.chars.next_if_eq(&$pred) {
+                    Some(_) => Some(Ok(Token {
+                        kind: $branch,
+                        lexeme: &self.source[start..=self.chars.offset()],
+                        literal: None,
+                    })),
+                    _ => token!($single),
+                }
+            };
+            ($kind:path, $literal:expr) => {
+                Some(Ok(Token {
+                    kind: $kind,
+                    lexeme: &self.source[start..=self.chars.offset()],
+                    literal: Some($literal),
+                }))
+            };
+        }
 
         match c {
-            '(' => bare(TokenKind::LeftParen),
-            ')' => bare(TokenKind::RightParen),
-            '{' => bare(TokenKind::LeftBrace),
-            '}' => bare(TokenKind::RightBrace),
-            ';' => bare(TokenKind::Semicolon),
-            ',' => bare(TokenKind::Comma),
-            '+' => bare(TokenKind::Plus),
-            '-' => bare(TokenKind::Minus),
-            '*' => bare(TokenKind::Star),
-            '.' => bare(TokenKind::Dot),
-            '=' => branching(TokenKind::Equal, '=', TokenKind::EqualEqual),
-            '!' => branching(TokenKind::Bang, '=', TokenKind::BangEqual),
-            '>' => branching(TokenKind::Greater, '=', TokenKind::GreaterEqual),
-            '<' => branching(TokenKind::Less, '=', TokenKind::LessEqual),
+            '(' => token!(TokenKind::LeftParen),
+            ')' => token!(TokenKind::RightParen),
+            '{' => token!(TokenKind::LeftBrace),
+            '}' => token!(TokenKind::RightBrace),
+            ';' => token!(TokenKind::Semicolon),
+            ',' => token!(TokenKind::Comma),
+            '+' => token!(TokenKind::Plus),
+            '-' => token!(TokenKind::Minus),
+            '*' => token!(TokenKind::Star),
+            '.' => token!(TokenKind::Dot),
+            '=' => token!(TokenKind::Equal, '=', TokenKind::EqualEqual),
+            '!' => token!(TokenKind::Bang, '=', TokenKind::BangEqual),
+            '>' => token!(TokenKind::Greater, '=', TokenKind::GreaterEqual),
+            '<' => token!(TokenKind::Less, '=', TokenKind::LessEqual),
             '/' => match self.chars.peek() {
                 Some('/') => {
-                    let _ = self.chars.by_ref().skip_while(|c| *c != '\n');
+                    while self.chars.next_if_neq(&'\n').is_some() {}
                     Self::next(self)
                 }
-                _ => bare(TokenKind::Slash),
+                _ => token!(TokenKind::Slash),
             },
             '"' => {
                 while self.chars.next_if_neq(&'"').is_some() {}
 
-                assert!(self.chars.next_if_eq(&'"').is_some());
+                if self.chars.next_if_eq(&'"').is_none() {
+                    return Some(Err(Error {
+                        kind: ErrorKind::UnterminatedStringLiteral,
+                        path: self.path.to_path_buf(),
+                        source: self.source.to_string(),
+                        error: start..start + c.len_utf8(),
+                    }));
+                }
 
                 let side = '"'.len_utf8();
-                let lexeme = &self.source[start..self.chars.offset];
-                let literal = &lexeme[side..];
+                let literal = &self.source[start + side..=self.chars.offset() - side];
 
-                dbg!(lexeme, literal);
+                token!(TokenKind::String, literal)
+            }
+            'a'..='z' | 'A'..='Z' => {
+                while self.chars.next_if(|c| !c.is_whitespace()).is_some() {}
+                let lexeme = &self.source[start..=self.chars.offset()];
 
-                full(TokenKind::String, lexeme, literal)
+                match lexeme {
+                    "while" => token!(TokenKind::While),
+                    _ => unimplemented!(),
+                }
             }
             x if x.is_whitespace() => Self::next(self),
             _ => Some(Err(Error {
