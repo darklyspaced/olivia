@@ -1,17 +1,5 @@
 use std::{fmt::Display, ops::Range, path::PathBuf};
 
-#[macro_export]
-macro_rules! error {
-    ($kind:path, $range:expr) => {
-        return Some(Err(Error {
-            kind: $kind,
-            path: self.path.to_path_buf(),
-            source: self.source.to_string(),
-            error: $range,
-        }));
-    };
-}
-
 #[derive(Debug)]
 pub struct Error {
     pub kind: ErrorKind,

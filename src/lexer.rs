@@ -128,14 +128,14 @@ impl<'de> Iterator for Lexer<'de> {
 
         macro_rules! token {
             ($kind:path) => {
-                Some(Ok(Token {
+                return Some(Ok(Token {
                     kind: $kind,
                     lexeme: &self.source[start..=self.chars.offset()],
                     literal: None,
                 }))
             };
             ($single:path, $pred:expr, $branch:path) => {
-                match self.chars.next_if_eq(&$pred) {
+                return match self.chars.next_if_eq(&$pred) {
                     Some(_) => Some(Ok(Token {
                         kind: $branch,
                         lexeme: &self.source[start..=self.chars.offset()],
@@ -145,7 +145,7 @@ impl<'de> Iterator for Lexer<'de> {
                 }
             };
             ($kind:path, $literal:expr) => {
-                Some(Ok(Token {
+                return Some(Ok(Token {
                     kind: $kind,
                     lexeme: &self.source[start..=self.chars.offset()],
                     literal: Some($literal),
@@ -153,61 +153,67 @@ impl<'de> Iterator for Lexer<'de> {
             };
         }
 
-        match c {
-            '(' => token!(TokenKind::LeftParen),
-            ')' => token!(TokenKind::RightParen),
-            '{' => token!(TokenKind::LeftBrace),
-            '}' => token!(TokenKind::RightBrace),
-            ';' => token!(TokenKind::Semicolon),
-            ',' => token!(TokenKind::Comma),
-            '+' => token!(TokenKind::Plus),
-            '-' => token!(TokenKind::Minus),
-            '*' => token!(TokenKind::Star),
-            '.' => token!(TokenKind::Dot),
-            '=' => token!(TokenKind::Equal, '=', TokenKind::EqualEqual),
-            '!' => token!(TokenKind::Bang, '=', TokenKind::BangEqual),
-            '>' => token!(TokenKind::Greater, '=', TokenKind::GreaterEqual),
-            '<' => token!(TokenKind::Less, '=', TokenKind::LessEqual),
-            '/' => match self.chars.peek() {
-                Some('/') => {
-                    while self.chars.next_if_neq(&'\n').is_some() {}
-                    Self::next(self)
+        macro_rules! error {
+            ($kind:path, $range:expr) => {
+                return Some(Err(Error {
+                    kind: $kind,
+                    path: self.path.to_path_buf(),
+                    source: self.source.to_string(),
+                    error: $range,
+                }))
+            };
+        }
+
+        loop {
+            match c {
+                '(' => token!(TokenKind::LeftParen),
+                ')' => token!(TokenKind::RightParen),
+                '{' => token!(TokenKind::LeftBrace),
+                '}' => token!(TokenKind::RightBrace),
+                ';' => token!(TokenKind::Semicolon),
+                ',' => token!(TokenKind::Comma),
+                '+' => token!(TokenKind::Plus),
+                '-' => token!(TokenKind::Minus),
+                '*' => token!(TokenKind::Star),
+                '.' => token!(TokenKind::Dot),
+                '=' => token!(TokenKind::Equal, '=', TokenKind::EqualEqual),
+                '!' => token!(TokenKind::Bang, '=', TokenKind::BangEqual),
+                '>' => token!(TokenKind::Greater, '=', TokenKind::GreaterEqual),
+                '<' => token!(TokenKind::Less, '=', TokenKind::LessEqual),
+                '/' => match self.chars.peek() {
+                    Some('/') => {
+                        while self.chars.next_if_neq(&'\n').is_some() {}
+                        continue;
+                    }
+                    _ => token!(TokenKind::Slash),
+                },
+                '"' => {
+                    while self.chars.next_if_neq(&'"').is_some() {}
+
+                    if self.chars.next_if_eq(&'"').is_none() {
+                        error!(
+                            ErrorKind::UnterminatedStringLiteral,
+                            start..start + c.len_utf8()
+                        )
+                    }
+
+                    let side = '"'.len_utf8();
+                    let literal = &self.source[start + side..=self.chars.offset() - side];
+
+                    token!(TokenKind::String, literal)
                 }
-                _ => token!(TokenKind::Slash),
-            },
-            '"' => {
-                while self.chars.next_if_neq(&'"').is_some() {}
+                'a'..='z' | 'A'..='Z' => {
+                    while self.chars.next_if(|c| !c.is_whitespace()).is_some() {}
+                    let lexeme = &self.source[start..=self.chars.offset()];
 
-                if self.chars.next_if_eq(&'"').is_none() {
-                    return Some(Err(Error {
-                        kind: ErrorKind::UnterminatedStringLiteral,
-                        path: self.path.to_path_buf(),
-                        source: self.source.to_string(),
-                        error: start..start + c.len_utf8(),
-                    }));
+                    match lexeme {
+                        "while" => token!(TokenKind::While),
+                        _ => unimplemented!(),
+                    }
                 }
-
-                let side = '"'.len_utf8();
-                let literal = &self.source[start + side..=self.chars.offset() - side];
-
-                token!(TokenKind::String, literal)
+                x if x.is_whitespace() => continue,
+                _ => error!(ErrorKind::UnexpectedCharacter, start..start + c.len_utf8()),
             }
-            'a'..='z' | 'A'..='Z' => {
-                while self.chars.next_if(|c| !c.is_whitespace()).is_some() {}
-                let lexeme = &self.source[start..=self.chars.offset()];
-
-                match lexeme {
-                    "while" => token!(TokenKind::While),
-                    _ => unimplemented!(),
-                }
-            }
-            x if x.is_whitespace() => Self::next(self),
-            _ => Some(Err(Error {
-                kind: ErrorKind::UnexpectedCharacter,
-                path: self.path.to_path_buf(),
-                source: self.source.to_string(),
-                error: start..start + c.len_utf8(),
-            })),
         }
     }
 }
