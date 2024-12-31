@@ -39,7 +39,7 @@ impl Iterator for Scanner<'_> {
 #[derive(Debug)]
 struct Scanner<'de> {
     iter: Chars<'de>,
-    peeked: Option<Option<<Self as Iterator>::Item>>,
+    peeked: Option<Option<char>>,
     prev: usize,
     offset: usize,
 }
@@ -54,22 +54,19 @@ impl<'de> Scanner<'de> {
         }
     }
 
-    pub fn peek(&mut self) -> Option<&<Self as Iterator>::Item> {
+    pub fn peek(&mut self) -> Option<&char> {
         self.peeked.get_or_insert_with(|| self.iter.next()).as_ref()
     }
 
-    pub fn next_if_eq(&mut self, expected: &char) -> Option<<Self as Iterator>::Item> {
+    pub fn next_if_eq(&mut self, expected: &char) -> Option<char> {
         self.next_if(|next| next == expected)
     }
 
-    pub fn next_if_neq(&mut self, not_expected: &char) -> Option<<Self as Iterator>::Item> {
+    pub fn next_if_neq(&mut self, not_expected: &char) -> Option<char> {
         self.next_if(|next| next != not_expected)
     }
 
-    fn next_if(
-        &mut self,
-        func: impl FnOnce(&<Self as Iterator>::Item) -> bool,
-    ) -> Option<<Self as Iterator>::Item> {
+    fn next_if(&mut self, func: impl FnOnce(&char) -> bool) -> Option<char> {
         match self.next() {
             Some(matched) if func(&matched) => Some(matched),
             other => {
