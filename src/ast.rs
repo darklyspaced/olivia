@@ -1,32 +1,58 @@
-use crate::lexer::Token;
+use crate::lexer::{Lexer, TokenKind};
 
 pub enum Expr {
-    BinOp(Op, Box<Expr>, Box<Expr>),
-    UnaryOp(Op, Box<Expr>),
-    Unit(Type),
+    BinOp(TokenKind, Box<Expr>, Box<Expr>),
+    UnaryOp(TokenKind, Box<Expr>),
+    Atom(Type),
 }
 
 /// Built in primitive types
 pub enum Type {
-    Integer,
+    Integer(i128),
     Float,
 }
 
-pub enum Op {
-    Add,
-    Minus,
-    Mult,
-    Div,
-    Pow,
+pub struct Parser<'de> {
+    toks: Lexer<'de>,
 }
 
-pub struct Parser<'de, I: Iterator<Item = Token<'de>>> {
-    toks: I,
+impl Parser<'_> {
+    /// just panic on errors for now
+    fn parse(&mut self, min_bp: u8) -> Option<Expr> {
+        let mut next = self.toks.next()?.unwrap();
+        let mut lhs = match next.kind {
+            TokenKind::Number | TokenKind::Float => Expr::Atom(Type::Integer(0)),
+            _ => unimplemented!(),
+        };
+
+        loop {
+            next = self.toks.next()?.unwrap();
+            match next.kind {
+                TokenKind::Plus => match infix_binding_power(&next.kind) {
+                    Some((l, r)) => {
+                        if l < min_bp {
+                            break;
+                        }
+
+                        let rhs = self.parse(r)?;
+
+                        lhs = Expr::BinOp(next.kind, Box::new(lhs), Box::new(rhs))
+                    }
+
+                    None => panic!("expected {{+, -, /, *}} found {}", next.kind),
+                },
+                _ => unimplemented!(),
+            }
+        }
+
+        Some(lhs)
+    }
 }
 
-impl<'de, I: Iterator<Item = Token<'de>>> Iterator for Parser<'de, I> {
-    type Item = Expr;
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.toks.next()?.kind {}
+fn infix_binding_power(op: &TokenKind) -> Option<(u8, u8)> {
+    match op {
+        TokenKind::Plus | TokenKind::Minus => Some((1, 2)),
+        TokenKind::Star | TokenKind::Slash => Some((3, 4)),
+        _ => None,
     }
 }
