@@ -1,19 +1,15 @@
-use std::iter::Peekable;
+use std::{fmt::Display, iter::Peekable};
 
-use crate::lexer::{Lexer, TokenKind};
+use crate::{
+    lexer::{Lexer, TokenKind},
+    r#type::Type,
+};
 
 #[derive(Debug)]
 pub enum Expr {
     BinOp(TokenKind, Box<Expr>, Box<Expr>),
     UnaryOp(TokenKind, Box<Expr>),
     Atom(Type),
-}
-
-/// Built in primitive types
-#[derive(Debug)]
-pub enum Type {
-    Integer(i128),
-    Float(f64),
 }
 
 pub struct Parser<'de> {
@@ -66,5 +62,15 @@ fn infix_binding_power(op: &TokenKind) -> Option<(u8, u8)> {
         TokenKind::Plus | TokenKind::Minus => Some((1, 2)),
         TokenKind::Star | TokenKind::Slash => Some((3, 4)),
         _ => None,
+    }
+}
+
+impl Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expr::BinOp(token_kind, er, e1) => write!(f, "({} {} {})", token_kind, er, e1),
+            Expr::UnaryOp(token_kind, e) => write!(f, "({}{})", token_kind, e),
+            Expr::Atom(ty) => write!(f, "{:?}", ty),
+        }
     }
 }

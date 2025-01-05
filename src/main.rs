@@ -37,7 +37,7 @@ fn main() {
             //    }
             //}
             let mut parser = OParser::new(lexer);
-            println!("{:?}", parser.parse(0));
+            println!("{}", parser.parse(0).unwrap());
 
             println!("EOF  null");
         }
