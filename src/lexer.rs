@@ -1,6 +1,9 @@
 use std::{fmt::Display, path::Path, str::Chars};
 
-use crate::error::{Error, ErrorKind};
+use crate::{
+    error::{Error, ErrorKind},
+    r#type::Ty,
+};
 
 pub struct Lexer<'de> {
     path: &'de Path,
@@ -89,6 +92,16 @@ pub struct Token<'de> {
     pub kind: TokenKind,
     pub lexeme: &'de str,
     pub literal: Option<&'de str>,
+}
+
+impl Token<'_> {
+    /// Returns the populated type of the token
+    pub fn val(&self) -> Ty {
+        match self.kind {
+            TokenKind::Number => self.literal.unwrap().parse::<u64>().unwrap().into(),
+            _ => panic!("{} doesn't have a type, obviously.", self.kind),
+        }
+    }
 }
 
 #[derive(strum_macros::Display, Debug)]
