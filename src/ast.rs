@@ -1,9 +1,17 @@
 use std::{fmt::Display, iter::Peekable};
 
 use crate::{
+    error::{ErrorKind, LexErr},
     lexer::{Lexer, TokenKind},
-    r#type::Ty,
+    ty::Ty,
 };
+
+#[derive(Debug)]
+pub enum Node {
+    Statement,
+    Declaration,
+    Expr(Expr),
+}
 
 #[derive(Debug)]
 pub enum Expr {
@@ -12,23 +20,95 @@ pub enum Expr {
     Atom(Ty),
 }
 
+impl<'de> Iterator for Parser<'de> {
+    type Item = Result<Node, LexErr>;
+    /// How this function operates is dependant on `State`. If `State::Parse`, then we parse. If
+    /// `State::Recover` then we must recover then change the state back to `State::Parse` and then
+    /// return a token.
+    ///
+    /// If `State::Recover`, then we can assume that the last item returned from this iterater was
+    /// `Error`
+    ///
+    /// Need some way to know where to recover until specific token?
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.state {
+                State::Parse => return Some(Self::parse(self)),
+                State::Recover(until) => {
+                    while self
+                        .toks
+                        .next_if(|tok| tok.as_ref().is_ok_and(|x| x.kind != until))
+                        .is_some()
+                    {}
+                    self.state = State::Parse;
+                }
+                State::Abort => return None,
+            }
+        }
+    }
+}
+
+/// The state of the parser
+pub enum State {
+    /// Parse
+    Parse,
+    /// What token to recover until
+    Recover(TokenKind),
+    /// Return None ad infinitum
+    Abort,
+}
+
 pub struct Parser<'de> {
+    state: State,
     toks: Peekable<Lexer<'de>>,
 }
 
 impl<'de> Parser<'de> {
     pub fn new(iter: Lexer<'de>) -> Self {
         Self {
+            state: State::Parse,
             toks: iter.peekable(),
         }
     }
 
-    /// just panic on errors for now
-    pub fn parse(&mut self, min_bp: u8) -> Option<Expr> {
-        let next = self.toks.next()?.unwrap();
-        let mut lhs = match next.kind {
+    pub fn parse(&mut self) -> Result<Node, LexErr> {
+        if self
+            .toks
+            .next_if(|tok| tok.as_ref().is_ok_and(|x| x.kind == TokenKind::Let))
+            .is_some()
+        {
+            self.declaration()
+        } else {
+            Ok(Node::Expr(self.expr(0)?))
+        }
+    }
+
+    fn declaration(&mut self) -> Result<Node, LexErr> {
+        unimplemented!()
+    }
+
+    /// An implementation of Pratt Parsing to deal with mathematical operations. All calls to this
+    /// function from outside of itself must have `min_bp` = 0.
+    fn expr(&mut self, min_bp: u8) -> Result<Expr, LexErr> {
+        let next = match dbg!(self.toks.peek()) {
+            Some(x) => match x {
+                Ok(_) => self.toks.next().unwrap()?,
+                Err(e) => {
+                    self.state = match e.kind {
+                        ErrorKind::UnexpectedCharacter => State::Recover(TokenKind::Semicolon), // EOS
+                        ErrorKind::UnterminatedStringLiteral => State::Abort,
+                    };
+                    let err = self.toks.next().unwrap().unwrap_err();
+                    return Err(err);
+                }
+            },
+            None => unimplemented!(
+                "TODO: add an error that says expected expression, found end of file"
+            ),
+        };
+        let mut lhs = match dbg!(next.kind) {
             TokenKind::Number | TokenKind::Float => Expr::Atom(next.val()),
-            x => unimplemented!("{x}"),
+            x => unimplemented!("This operand is not supported: {x}"),
         };
 
         while let Some(tok) = self.toks.peek() {
@@ -43,9 +123,8 @@ impl<'de> Parser<'de> {
                     // only want to consume once we know that we're folding so that after
                     // folding we can resume on the operator that had a lower BP to the left of
                     // it
-                    let next = self.toks.next()?.unwrap();
-                    let rhs = self.parse(r)?;
-
+                    let next = self.toks.next().unwrap()?;
+                    let rhs = self.expr(r)?;
                     lhs = Expr::BinOp(next.kind, Box::new(lhs), Box::new(rhs))
                 }
 
@@ -53,7 +132,7 @@ impl<'de> Parser<'de> {
             };
         }
 
-        Some(lhs)
+        Ok(lhs)
     }
 }
 

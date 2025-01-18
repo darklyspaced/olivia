@@ -1,8 +1,8 @@
 use std::{fmt::Display, path::Path, str::Chars};
 
 use crate::{
-    error::{Error, ErrorKind},
-    r#type::Ty,
+    error::{ErrorKind, LexErr},
+    ty::Ty,
 };
 
 pub struct Lexer<'de> {
@@ -88,6 +88,7 @@ impl<'de> Scanner<'de> {
     }
 }
 
+#[derive(Debug)]
 pub struct Token<'de> {
     pub kind: TokenKind,
     pub lexeme: &'de str,
@@ -104,7 +105,7 @@ impl Token<'_> {
     }
 }
 
-#[derive(strum_macros::Display, Debug)]
+#[derive(strum_macros::Display, Debug, PartialEq, Copy, Clone)]
 pub enum TokenKind {
     LeftParen,
     RightParen,
@@ -132,10 +133,11 @@ pub enum TokenKind {
     Ident,
     Integer,
     Float,
+    Let,
 }
 
 impl<'de> Iterator for Lexer<'de> {
-    type Item = Result<Token<'de>, Error>;
+    type Item = Result<Token<'de>, LexErr>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let (mut c, mut start);
@@ -169,7 +171,7 @@ impl<'de> Iterator for Lexer<'de> {
 
         macro_rules! error {
             ($kind:path, $range:expr) => {
-                return Some(Err(Error {
+                return Some(Err(LexErr {
                     kind: $kind,
                     path: self.path.to_path_buf(),
                     source: self.source.to_string(),
@@ -222,6 +224,7 @@ impl<'de> Iterator for Lexer<'de> {
                     match &self.source[start..=self.chars.offset()] {
                         "while" => token!(TokenKind::While),
                         "for" => token!(TokenKind::For),
+                        "let" => token!(TokenKind::Let),
                         _ => token!(TokenKind::Ident),
                     }
                 }
@@ -253,7 +256,7 @@ impl<'de> Iterator for Lexer<'de> {
 
 impl Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
+        write!(
             f,
             "{} {} {}",
             self.kind,

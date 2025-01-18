@@ -1,7 +1,7 @@
 use std::{fmt::Display, ops::Range, path::PathBuf};
 
 #[derive(Debug)]
-pub struct Error {
+pub struct LexErr {
     pub kind: ErrorKind,
     pub path: PathBuf,
     pub source: String,
@@ -24,7 +24,7 @@ impl Display for ErrorKind {
     }
 }
 
-impl Display for Error {
+impl Display for LexErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "ERROR: {}", self.path.display())?;
 
@@ -39,8 +39,11 @@ impl Display for Error {
             })
             .expect("offset not in source");
 
-        writeln!(f, "{}| {}", line.0 + 1, line.1)?;
-        write!(f, "   ")?; // on account of ln_num
+        let line_display = format!("{}| {}", line.0 + 1, line.1);
+        writeln!(f, "{}", line_display)?;
+        for _c in 0..line_display.len() {
+            write!(f, " ")?;
+        }
 
         offset -= line.1.len();
         // the '\n's are removed so they need to be accounted for
@@ -61,4 +64,4 @@ impl Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for LexErr {}

@@ -17,28 +17,39 @@ enum Commands {
         /// Source to tokenise
         filename: String,
     },
+    /// Parses the input into an AST
+    Parse {
+        /// Source to tokenise, then parse
+        filename: String,
+    },
 }
 
 fn main() {
     let malatium = Malatium::parse();
 
     match &malatium.command {
+        Commands::Parse { filename } => {
+            let source = read_to_string(filename).expect("failed to read file");
+
+            let lexer = Lexer::new(&source, Path::new(filename));
+
+            let mut parser = OParser::new(lexer);
+            println!("{:?}", parser.parse().unwrap());
+        }
         Commands::Tokenize { filename } => {
             let source = read_to_string(filename).expect("failed to read file");
             let lexer = Lexer::new(&source, Path::new(filename));
-            //for res in lexer.into_iter() {
-            //    match res {
-            //        Ok(tok) => {
-            //            println!("{}", tok);
-            //        }
-            //        Err(e) => {
-            //            println!("{}", e);
-            //        }
-            //    }
-            //}
-            let mut parser = OParser::new(lexer);
-            println!("{}", parser.parse(0).unwrap());
 
+            for res in lexer.into_iter() {
+                match res {
+                    Ok(tok) => {
+                        println!("{}", tok);
+                    }
+                    Err(e) => {
+                        println!("{}", e);
+                    }
+                }
+            }
             println!("EOF  null");
         }
     }
