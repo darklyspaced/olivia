@@ -1,7 +1,7 @@
 use std::{fmt::Display, iter::Peekable};
 
 use crate::{
-    error::{ErrorKind, LexErr},
+    error::{LexErr, LexErrorKind, ParseErr},
     lexer::{Lexer, TokenKind},
     ty::Ty,
 };
@@ -20,7 +20,7 @@ pub enum Expr {
     Atom(Ty),
 }
 
-impl<'de> Iterator for Parser<'de> {
+impl Iterator for Parser<'_> {
     type Item = Result<Node, LexErr>;
     /// How this function operates is dependant on `State`. If `State::Parse`, then we parse. If
     /// `State::Recover` then we must recover then change the state back to `State::Parse` and then
@@ -34,10 +34,17 @@ impl<'de> Iterator for Parser<'de> {
         loop {
             match self.state {
                 State::Parse => return Some(Self::parse(self)),
-                State::Recover(until) => {
+                State::Recover => {
                     while self
                         .toks
-                        .next_if(|tok| tok.as_ref().is_ok_and(|x| x.kind != until))
+                        .next_if(|tok| {
+                            tok.as_ref().is_ok_and(|x| {
+                                !matches!(
+                                    x.kind,
+                                    TokenKind::Semicolon | TokenKind::While | TokenKind::For
+                                )
+                            })
+                        })
                         .is_some()
                     {}
                     self.state = State::Parse;
@@ -52,14 +59,15 @@ impl<'de> Iterator for Parser<'de> {
 pub enum State {
     /// Parse
     Parse,
-    /// What token to recover until
-    Recover(TokenKind),
+    /// Recover until the next keywork or end of statement
+    Recover,
     /// Return None ad infinitum
     Abort,
 }
 
 pub struct Parser<'de> {
     state: State,
+    source_map: SourceMap,
     toks: Peekable<Lexer<'de>>,
 }
 
@@ -71,7 +79,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Node, LexErr> {
+    pub fn parse(&mut self) -> Result<Node, ParseErr> {
         if self
             .toks
             .next_if(|tok| tok.as_ref().is_ok_and(|x| x.kind == TokenKind::Let))
@@ -83,32 +91,34 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn declaration(&mut self) -> Result<Node, LexErr> {
+    fn declaration(&mut self) -> Result<Node, ParseErr> {
         unimplemented!()
     }
 
     /// An implementation of Pratt Parsing to deal with mathematical operations. All calls to this
     /// function from outside of itself must have `min_bp` = 0.
-    fn expr(&mut self, min_bp: u8) -> Result<Expr, LexErr> {
-        let next = match dbg!(self.toks.peek()) {
+    fn expr(&mut self, min_bp: u8) -> Result<Expr, ParseErr> {
+        let next = match self.toks.peek() {
             Some(x) => match x {
                 Ok(_) => self.toks.next().unwrap()?,
                 Err(e) => {
                     self.state = match e.kind {
-                        ErrorKind::UnexpectedCharacter => State::Recover(TokenKind::Semicolon), // EOS
-                        ErrorKind::UnterminatedStringLiteral => State::Abort,
+                        LexErrorKind::UnexpectedCharacter => State::Recover,
+                        LexErrorKind::UnterminatedStringLiteral => State::Abort,
                     };
                     let err = self.toks.next().unwrap().unwrap_err();
-                    return Err(err);
+                    return Err(err.into());
                 }
             },
             None => unimplemented!(
                 "TODO: add an error that says expected expression, found end of file"
             ),
         };
-        let mut lhs = match dbg!(next.kind) {
+        let mut lhs = match next.kind {
             TokenKind::Number | TokenKind::Float => Expr::Atom(next.val()),
-            x => unimplemented!("This operand is not supported: {x}"),
+            x => unimplemented!(
+                "TODO: Error that says that {x} was found in place of was found in place of ..."
+            ),
         };
 
         while let Some(tok) = self.toks.peek() {

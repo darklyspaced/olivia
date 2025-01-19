@@ -1,7 +1,7 @@
 use std::{fmt::Display, path::Path, str::Chars};
 
 use crate::{
-    error::{ErrorKind, LexErr},
+    error::{LexErr, LexErrorKind},
     ty::Ty,
 };
 
@@ -208,7 +208,7 @@ impl<'de> Iterator for Lexer<'de> {
 
                     if self.chars.next_if_eq(&'"').is_none() {
                         error!(
-                            ErrorKind::UnterminatedStringLiteral,
+                            LexErrorKind::UnterminatedStringLiteral,
                             start..start + c.len_utf8()
                         )
                     }
@@ -248,7 +248,10 @@ impl<'de> Iterator for Lexer<'de> {
                     }
                 }
                 x if x.is_whitespace() => continue,
-                _ => error!(ErrorKind::UnexpectedCharacter, start..start + c.len_utf8()),
+                _ => error!(
+                    LexErrorKind::UnexpectedCharacter,
+                    start..start + c.len_utf8()
+                ),
             }
         }
     }
