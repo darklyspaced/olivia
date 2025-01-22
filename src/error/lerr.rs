@@ -1,9 +1,7 @@
 use std::{fmt::Display, ops::Range, path::PathBuf};
 
-use super::span::Span;
-
 #[derive(Debug)]
-pub struct LexErr {
+pub struct LexError {
     pub kind: LexErrorKind,
     pub path: PathBuf,
     pub source: String,
@@ -24,6 +22,15 @@ impl LexErrorKind {
             Self::UnterminatedStringLiteral => "starts here",
         })
     }
+
+    pub fn message(&self) -> String {
+        String::from(match self {
+            LexErrorKind::UnexpectedCharacter => "unexpected character found here",
+            LexErrorKind::UnterminatedStringLiteral => {
+                "unterminated string literal, expected '\"' but found EOF"
+            }
+        })
+    }
 }
 
 impl Display for LexErrorKind {
@@ -35,7 +42,7 @@ impl Display for LexErrorKind {
     }
 }
 
-impl Display for LexErr {
+impl Display for LexError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "ERROR: {}", self.path.display())?;
 

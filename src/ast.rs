@@ -1,10 +1,19 @@
+use std::fmt::Debug;
 use std::{fmt::Display, iter::Peekable};
 
 use crate::{
-    error::{LexErr, LexErrorKind, ParseErr},
+    error::{
+        self,
+        lerr::{LexError, LexErrorKind},
+        perr::ParseError,
+        reportable::Reportable,
+        source_map::SourceMap,
+    },
     lexer::{Lexer, TokenKind},
     ty::Ty,
 };
+
+type Error = error::Error<ParseError>;
 
 #[derive(Debug)]
 pub enum Node {
@@ -21,7 +30,7 @@ pub enum Expr {
 }
 
 impl Iterator for Parser<'_> {
-    type Item = Result<Node, LexErr>;
+    type Item = Result<Node, Error>;
     /// How this function operates is dependant on `State`. If `State::Parse`, then we parse. If
     /// `State::Recover` then we must recover then change the state back to `State::Parse` and then
     /// return a token.
@@ -72,14 +81,15 @@ pub struct Parser<'de> {
 }
 
 impl<'de> Parser<'de> {
-    pub fn new(iter: Lexer<'de>) -> Self {
+    pub fn new(iter: Lexer<'de>, source_map: SourceMap) -> Self {
         Self {
             state: State::Parse,
             toks: iter.peekable(),
+            source_map,
         }
     }
 
-    pub fn parse(&mut self) -> Result<Node, ParseErr> {
+    pub fn parse(&mut self) -> Result<Node, Error> {
         if self
             .toks
             .next_if(|tok| tok.as_ref().is_ok_and(|x| x.kind == TokenKind::Let))
@@ -91,13 +101,13 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn declaration(&mut self) -> Result<Node, ParseErr> {
+    fn declaration(&mut self) -> Result<Node, Error> {
         unimplemented!()
     }
 
     /// An implementation of Pratt Parsing to deal with mathematical operations. All calls to this
     /// function from outside of itself must have `min_bp` = 0.
-    fn expr(&mut self, min_bp: u8) -> Result<Expr, ParseErr> {
+    fn expr(&mut self, min_bp: u8) -> Result<Expr, Error> {
         let next = match self.toks.peek() {
             Some(x) => match x {
                 Ok(_) => self.toks.next().unwrap()?,

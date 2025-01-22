@@ -1,36 +1,13 @@
-use std::fmt::Display;
-
 use super::{
     lerr::LexErrorKind,
-    reportable::{Ctxt, Reportable},
+    reportable::{Ctxt, RawCtxt, Reportable},
 };
 
 #[derive(Debug)]
-pub struct ParseErr<'de> {
+pub struct ParseError {
     pub kind: ParseErrorKind,
-    /// The line and line number
-    pub ctxt: (usize, &'de str),
-}
-
-impl<'de> Reportable<'de> for ParseErr<'de> {
-    fn ctxt(&self) -> Vec<Ctxt<'de>> {
-        let annotation = String::from(match self.kind {
-            ParseErrorKind::ExpectedExprFoundEOF => "EOF here",
-            ParseErrorKind::Lexing(kind) => kind.annotation().as_str(),
-        });
-        vec![Ctxt {
-            line: self.ctxt.1,
-            num: self.ctxt.0,
-            offset: todo!(),
-            annotation,
-        }]
-    }
-    fn msg() -> String {
-        todo!()
-    }
-    fn code() -> usize {
-        todo!()
-    }
+    /// The line number, line, and offset of annotation
+    pub ctxt: Option<RawCtxt>,
 }
 
 #[derive(Debug)]
@@ -39,13 +16,49 @@ pub enum ParseErrorKind {
     ExpectedExprFoundEOF,
 }
 
-impl Display for ParseErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Reportable for ParseError {
+    fn ctxt(&mut self) -> Vec<Ctxt> {
+        let annotation = self.kind.annotation();
+
+        vec![Ctxt {
+            inner: self.ctxt.take().expect("should only call ctxt once"), // should function fine
+            // if only called once
+            annotation,
+        }]
+    }
+
+    fn msg(&self) -> String {
+        self.kind.message()
+    }
+
+    fn code(&self) -> usize {
+        1
+    }
+}
+
+impl ParseErrorKind {
+    pub fn annotation(&self) -> String {
         match self {
-            ParseErrorKind::ExpectedExprFoundEOF => writeln!(f, "expected Expr, found EOF"),
-            ParseErrorKind::Lexing(kind) => writeln!(f, "{}", kind),
+            ParseErrorKind::Lexing(lex_error_kind) => lex_error_kind.annotation(),
+            ParseErrorKind::ExpectedExprFoundEOF => String::from("expected expr here"),
+        }
+    }
+
+    pub fn message(&self) -> String {
+        match self {
+            ParseErrorKind::Lexing(lex_error_kind) => lex_error_kind.message(),
+            ParseErrorKind::ExpectedExprFoundEOF => {
+                String::from("found EOF in place of an expression ")
+            }
         }
     }
 }
 
-impl std::error::Error for ParseErr<'_> {}
+//impl Display for ParseErrorKind {
+//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//        match self {
+//            ParseErrorKind::ExpectedExprFoundEOF => writeln!(f, "expected Expr, found EOF"),
+//            ParseErrorKind::Lexing(kind) => writeln!(f, "{}", kind),
+//        }
+//    }
+//}

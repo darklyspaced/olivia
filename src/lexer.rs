@@ -1,7 +1,7 @@
 use std::{fmt::Display, path::Path, str::Chars};
 
 use crate::{
-    error::{LexErr, LexErrorKind},
+    error::lerr::{LexError, LexErrorKind},
     ty::Ty,
 };
 
@@ -137,7 +137,7 @@ pub enum TokenKind {
 }
 
 impl<'de> Iterator for Lexer<'de> {
-    type Item = Result<Token<'de>, LexErr>;
+    type Item = Result<Token<'de>, LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let (mut c, mut start);
@@ -171,7 +171,7 @@ impl<'de> Iterator for Lexer<'de> {
 
         macro_rules! error {
             ($kind:path, $range:expr) => {
-                return Some(Err(LexErr {
+                return Some(Err(LexError {
                     kind: $kind,
                     path: self.path.to_path_buf(),
                     source: self.source.to_string(),
