@@ -1,20 +1,26 @@
 use std::{fmt::Display, path::Path, str::Chars};
 
 use crate::{
-    error::lerr::{LexError, LexErrorKind},
+    error::{
+        Error,
+        lerr::{LexError, LexErrorKind},
+        perr::ParseError,
+        source_map::{self, SourceMap},
+    },
     ty::Ty,
 };
 
 pub struct Lexer<'de> {
-    path: &'de Path,
     source: &'de str,
+    source_map: &'de SourceMap,
     chars: Scanner<'de>,
 }
 
 impl<'de> Lexer<'de> {
-    pub fn new(source: &'de str, path: &'de Path) -> Self {
+    pub fn new(source_map: &'de SourceMap) -> Self {
+        let source = source_map.source();
         Self {
-            path,
+            source_map,
             source,
             chars: Scanner::new(source),
         }
@@ -137,7 +143,7 @@ pub enum TokenKind {
 }
 
 impl<'de> Iterator for Lexer<'de> {
-    type Item = Result<Token<'de>, LexError>;
+    type Item = Result<Token<'de>, Error<LexError>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let (mut c, mut start);
@@ -207,10 +213,11 @@ impl<'de> Iterator for Lexer<'de> {
                     while self.chars.next_if_neq(&'"').is_some() {}
 
                     if self.chars.next_if_eq(&'"').is_none() {
-                        error!(
-                            LexErrorKind::UnterminatedStringLiteral,
-                            start..start + c.len_utf8()
-                        )
+                        return Some(Err(Error { inner: LexError {} }));
+                        //error!(
+                        //    LexErrorKind::UnterminatedStringLiteral,
+                        //    start..start + c.len_utf8()
+                        //)
                     }
 
                     let side = '"'.len_utf8();

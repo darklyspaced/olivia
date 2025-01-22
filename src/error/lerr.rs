@@ -1,18 +1,41 @@
-use std::{fmt::Display, ops::Range, path::PathBuf};
+use std::{fmt::Display, ops::Range};
+
+use super::reportable::{Ctxt, RawCtxt, Reportable};
 
 #[derive(Debug)]
 pub struct LexError {
     pub kind: LexErrorKind,
-    pub path: PathBuf,
-    pub source: String,
-    /// Where the error actually is in the source
     pub error: Range<usize>,
+    //pub path: PathBuf,
+    //pub source: String,
+    ///// Where the error actually is in the source
 }
 
 #[derive(Debug)]
 pub enum LexErrorKind {
     UnexpectedCharacter,
     UnterminatedStringLiteral,
+}
+
+impl Reportable for LexError {
+    fn ctxt(&mut self) -> Vec<Ctxt> {
+        let annotation = self.kind.annotation();
+
+        // TODO: change this to use error range!!!
+        vec![Ctxt {
+            inner: self.ctxt.take().expect("should only call ctxt once"), // should function fine
+            // if only called once
+            annotation,
+        }]
+    }
+
+    fn msg(&self) -> String {
+        self.kind.message()
+    }
+
+    fn code(&self) -> usize {
+        1
+    }
 }
 
 impl LexErrorKind {

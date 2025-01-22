@@ -11,23 +11,16 @@ pub mod reportable;
 pub mod source_map;
 pub mod span;
 
-impl From<LexError> for Error<ParseError> {
-    fn from(value: LexError) -> Self {
-        Self {
-            inner: ParseError {
-                kind: perr::ParseErrorKind::Lexing(value.kind),
-            },
-        }
-    }
-}
-
 #[derive(Debug)]
 /// The main error type produced by the compiler
 pub struct Error<E>
 where
     E: Reportable,
 {
+    /// The actual error
     inner: E,
+    /// Where in code this error was generated (line, column)
+    code_pos: (usize, usize),
 }
 
 impl<'de, E> Reportable for Error<E>
