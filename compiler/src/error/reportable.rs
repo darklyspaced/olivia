@@ -25,7 +25,14 @@ pub struct RawCtxt {
     /// Line number
     pub num: usize,
     /// Offset of annotation
-    pub offset: usize,
+    pub annotation_range: (usize, usize),
     /// Where in code this error was generated (line, column)
-    pub code_pos: (usize, usize),
+    pub code_pos: Option<(u32, u32)>,
+}
+
+impl RawCtxt {
+    pub fn with(mut self, line: u32, column: u32) -> Self {
+        self.code_pos = Some((line, column));
+        self
+    }
 }

@@ -1,11 +1,10 @@
-use std::{fmt::Display, path::Path, str::Chars};
+use std::{fmt::Display, str::Chars};
 
 use crate::{
     error::{
         Error,
         lerr::{LexError, LexErrorKind},
-        perr::ParseError,
-        source_map::{self, SourceMap},
+        source_map::SourceMap,
     },
     ty::Ty,
 };
@@ -176,13 +175,15 @@ impl<'de> Iterator for Lexer<'de> {
         }
 
         macro_rules! error {
-            ($kind:path, $range:expr) => {
+            ($kind:path) => {
                 return Some(Err(LexError {
                     kind: $kind,
-                    path: self.path.to_path_buf(),
-                    source: self.source.to_string(),
-                    error: $range,
-                }))
+                    ctxt: Some(
+                        self.source_map
+                            .ctxt_from_range((start, self.chars.offset())),
+                    ),
+                }
+                .into()))
             };
         }
 
@@ -213,11 +214,7 @@ impl<'de> Iterator for Lexer<'de> {
                     while self.chars.next_if_neq(&'"').is_some() {}
 
                     if self.chars.next_if_eq(&'"').is_none() {
-                        return Some(Err(Error { inner: LexError {} }));
-                        //error!(
-                        //    LexErrorKind::UnterminatedStringLiteral,
-                        //    start..start + c.len_utf8()
-                        //)
+                        error!(LexErrorKind::UnterminatedStringLiteral)
                     }
 
                     let side = '"'.len_utf8();
@@ -255,10 +252,7 @@ impl<'de> Iterator for Lexer<'de> {
                     }
                 }
                 x if x.is_whitespace() => continue,
-                _ => error!(
-                    LexErrorKind::UnexpectedCharacter,
-                    start..start + c.len_utf8()
-                ),
+                _ => error!(LexErrorKind::UnexpectedCharacter),
             }
         }
     }

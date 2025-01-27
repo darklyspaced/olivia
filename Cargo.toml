@@ -1,9 +1,5 @@
-[package]
-name = "olivia"
-version = "0.0.0"
-edition = "2024"
-
-[dependencies]
-clap = { version = "4.5.23", features = ["derive"] }
-strum = { version = "0.26.3", features = ["derive"] }
-strum_macros = "0.26.4"
+[workspace]
+members = [
+    "colour", "compiler",
+]
+resolver = "3"

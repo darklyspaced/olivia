@@ -1,7 +1,5 @@
-use std::{fs::read_to_string, path::Path};
-
 use clap::{Parser, Subcommand};
-use olivia::{ast::Parser as OParser, lexer::Lexer};
+use compiler::{ast::Parser as OParser, error::source_map::SourceMap, lexer::Lexer};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -29,16 +27,17 @@ fn main() {
 
     match &malatium.command {
         Commands::Parse { filename } => {
-            let source = read_to_string(filename).expect("failed to read file");
+            let source_map = SourceMap::from(filename);
 
-            let lexer = Lexer::new(&source, Path::new(filename));
+            let lexer = Lexer::new(&source_map);
 
-            let mut parser = OParser::new(lexer);
-            println!("{:?}", parser.parse().unwrap());
+            let mut parser = OParser::new(lexer, &source_map);
+            println!("{}", parser.parse().unwrap_err());
         }
         Commands::Tokenize { filename } => {
-            let source = read_to_string(filename).expect("failed to read file");
-            let lexer = Lexer::new(&source, Path::new(filename));
+            let source_map = SourceMap::from(filename);
+
+            let lexer = Lexer::new(&source_map);
 
             for res in lexer.into_iter() {
                 match res {

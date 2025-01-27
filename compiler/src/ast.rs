@@ -1,15 +1,16 @@
-use std::fmt::Debug;
-use std::{fmt::Display, iter::Peekable};
+use std::{
+    fmt::{Debug, Display},
+    iter::Peekable,
+};
 
 use crate::{
     error::{
         self,
-        lerr::{LexError, LexErrorKind},
-        perr::ParseError,
-        reportable::Reportable,
+        lerr::LexErrorKind,
+        perr::{ParseError, ParseErrorKind},
         source_map::SourceMap,
     },
-    lexer::{Lexer, TokenKind},
+    lexer::{Lexer, Token, TokenKind},
     ty::Ty,
 };
 
@@ -27,6 +28,13 @@ pub enum Expr {
     BinOp(TokenKind, Box<Expr>, Box<Expr>),
     UnaryOp(TokenKind, Box<Expr>),
     Atom(Ty),
+}
+
+pub enum Op {
+    Add,
+    Mult,
+    Div,
+    Sub,
 }
 
 impl Iterator for Parser<'_> {
@@ -76,12 +84,12 @@ pub enum State {
 
 pub struct Parser<'de> {
     state: State,
-    source_map: SourceMap,
+    source_map: &'de SourceMap,
     toks: Peekable<Lexer<'de>>,
 }
 
 impl<'de> Parser<'de> {
-    pub fn new(iter: Lexer<'de>, source_map: SourceMap) -> Self {
+    pub fn new(iter: Lexer<'de>, source_map: &'de SourceMap) -> Self {
         Self {
             state: State::Parse,
             toks: iter.peekable(),
@@ -112,7 +120,7 @@ impl<'de> Parser<'de> {
             Some(x) => match x {
                 Ok(_) => self.toks.next().unwrap()?,
                 Err(e) => {
-                    self.state = match e.kind {
+                    self.state = match e.kind() {
                         LexErrorKind::UnexpectedCharacter => State::Recover,
                         LexErrorKind::UnterminatedStringLiteral => State::Abort,
                     };
@@ -120,15 +128,19 @@ impl<'de> Parser<'de> {
                     return Err(err.into());
                 }
             },
-            None => unimplemented!(
-                "TODO: add an error that says expected expression, found end of file"
-            ),
+            None => {
+                // this should be the last line and the last byte
+                let ctxt = self.source_map.line_from_end();
+                return Err(ParseError {
+                    kind: ParseErrorKind::ExpectedExprFoundEOF,
+                    ctxt: Some(ctxt.with(line!(), column!())),
+                }
+                .into());
+            }
         };
         let mut lhs = match next.kind {
             TokenKind::Number | TokenKind::Float => Expr::Atom(next.val()),
-            x => unimplemented!(
-                "TODO: Error that says that {x} was found in place of was found in place of ..."
-            ),
+            x => unimplemented!("TODO: Error that says that {x} was found in place of ..."),
         };
 
         while let Some(tok) = self.toks.peek() {
@@ -161,6 +173,20 @@ fn infix_binding_power(op: &TokenKind) -> Option<(u8, u8)> {
         TokenKind::Plus | TokenKind::Minus => Some((1, 2)),
         TokenKind::Star | TokenKind::Slash => Some((3, 4)),
         _ => None,
+    }
+}
+
+impl<'de> TryFrom<Token<'de>> for Op {
+    type Error = ParseErrorKind;
+
+    fn try_from(value: Token<'de>) -> Result<Self, Self::Error> {
+        match value.kind {
+            TokenKind::Plus => Ok(Op::Add),
+            TokenKind::Minus => Ok(Op::Sub),
+            TokenKind::Star => Ok(Op::Mult),
+            TokenKind::Slash => Ok(Op::Div),
+            _ => Err(ParseErrorKind::ExpectedOp(String::from(value.lexeme))),
+        }
     }
 }
 

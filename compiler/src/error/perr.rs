@@ -14,6 +14,7 @@ pub struct ParseError {
 pub enum ParseErrorKind {
     Lexing(LexErrorKind),
     ExpectedExprFoundEOF,
+    ExpectedOp(String),
 }
 
 impl Reportable for ParseError {
@@ -41,6 +42,7 @@ impl ParseErrorKind {
         match self {
             ParseErrorKind::Lexing(lex_error_kind) => lex_error_kind.annotation(),
             ParseErrorKind::ExpectedExprFoundEOF => String::from("expected expr here"),
+            ParseErrorKind::ExpectedOp(x) => format!("expected op, found `{}`", x),
         }
     }
 
@@ -50,15 +52,7 @@ impl ParseErrorKind {
             ParseErrorKind::ExpectedExprFoundEOF => {
                 String::from("found EOF in place of an expression ")
             }
+            ParseErrorKind::ExpectedOp(x) => format!("found `{}` where operator was expected", x),
         }
     }
 }
-
-//impl Display for ParseErrorKind {
-//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//        match self {
-//            ParseErrorKind::ExpectedExprFoundEOF => writeln!(f, "expected Expr, found EOF"),
-//            ParseErrorKind::Lexing(kind) => writeln!(f, "{}", kind),
-//        }
-//    }
-//}
