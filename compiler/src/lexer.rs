@@ -141,6 +141,36 @@ pub enum TokenKind {
     Let,
 }
 
+impl TokenKind {
+    pub fn to_string(&self) -> &str {
+        match self {
+            TokenKind::LeftParen => "(",
+            TokenKind::RightParen => ")",
+            TokenKind::LeftBrace => "{",
+            TokenKind::RightBrace => "}",
+            TokenKind::Semicolon => ";",
+            TokenKind::Comma => ",",
+            TokenKind::Plus => "+",
+            TokenKind::Minus => "-",
+            TokenKind::Star => "*",
+            TokenKind::Dot => ".",
+            TokenKind::Equal => "=",
+            TokenKind::EqualEqual => "==",
+            TokenKind::Bang => "!",
+            TokenKind::BangEqual => "!=",
+            TokenKind::Greater => ">",
+            TokenKind::GreaterEqual => ">=",
+            TokenKind::Less => "<",
+            TokenKind::LessEqual => "<=",
+            TokenKind::Slash => "/",
+            TokenKind::While => "while",
+            TokenKind::For => "for",
+            TokenKind::Let => "let",
+            tk => unimplemented!("no String repr of {}", tk),
+        }
+    }
+}
+
 impl<'de> Iterator for Lexer<'de> {
     type Item = Result<Token<'de>, Error<LexError>>;
 
@@ -180,7 +210,8 @@ impl<'de> Iterator for Lexer<'de> {
                     kind: $kind,
                     ctxt: Some(
                         self.source_map
-                            .ctxt_from_range((start, self.chars.offset())),
+                            .ctxt_from_range((start, self.chars.offset()))
+                            .with(line!(), column!()),
                     ),
                 }
                 .into()))

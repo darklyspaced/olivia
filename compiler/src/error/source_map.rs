@@ -1,5 +1,4 @@
 use std::fs::read_to_string;
-use std::ops::Range;
 use std::path::PathBuf;
 
 use crate::lexer::Token;
@@ -18,11 +17,23 @@ impl<'de> SourceMap {
         Self { source, path }
     }
 
-    /// Returns the line, and line number of the token
-    fn line_from_tok(&'de self, tok: &Token<'de>) -> (usize, &'de str) {
-        let start = tok.lexeme.as_ptr() as usize - self.source.as_ptr() as usize;
+    /// Returns gleaned context from token
+    pub fn ctxt_from_tok(&'de self, tok: &Token<'de>) -> RawCtxt {
+        let tok_offset = tok.lexeme.as_ptr() as usize - self.source.as_ptr() as usize;
 
-        self.line_from_offset(start)
+        let (num, line) = self.line_from_offset(tok_offset);
+        let line_offset = line.as_ptr() as usize - self.source.as_ptr() as usize;
+
+        let rel_start = tok_offset - line_offset;
+        let rel_end = rel_start + tok.lexeme.len();
+
+        RawCtxt {
+            path: self.path.to_string_lossy().to_string(),
+            line: String::from(line),
+            num,
+            annotation_range: (rel_start, rel_end),
+            code_pos: None,
+        }
     }
 
     /// Returns the line, and line number of the offset
@@ -41,17 +52,23 @@ impl<'de> SourceMap {
         (num + 1, line)
     }
 
-    /// Returns the last line and it's line number
-    pub fn line_from_end(&'de self) -> RawCtxt {
+    /// Returns the last line and it's line number. This points to one past the last character on
+    /// the last line since it assumes that it's an error to do with EOFs
+    pub fn ctxt_from_end(&'de self) -> RawCtxt {
         let mut lines = self.source.lines().rev();
-        let line = lines.next().expect("should have been non-empty");
-        let last_char = line.chars().next_back().map_or(0, |char| char.len_utf8());
+        let line = format!(
+            "{} ",
+            lines.next().expect("should have been non-empty").trim_end()
+        ); // add a space so we can point to it to represent EOF
+
+        let rel_end = line.len();
+        let rel_start = rel_end - " ".len();
 
         RawCtxt {
             path: self.path.to_string_lossy().to_string(),
-            line: String::from(line),
+            line,
             num: lines.count() + 1,
-            annotation_range: (line.len() - last_char, line.len()),
+            annotation_range: (rel_start, rel_end),
             code_pos: None,
         }
     }

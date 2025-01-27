@@ -18,7 +18,7 @@ where
     E: Reportable,
 {
     /// The actual error
-    inner: E,
+    pub inner: E,
 }
 
 impl Error<ParseError> {
