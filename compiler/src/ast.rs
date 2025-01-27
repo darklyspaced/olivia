@@ -143,8 +143,19 @@ impl<'de> Parser<'de> {
             x => unimplemented!("TODO: Error that says that {x} was found in place of ..."),
         };
 
-        while let Some(tok) = self.toks.peek() {
-            let tok = tok.as_ref().unwrap();
+        while let Some(res) = self.toks.peek() {
+            let tok = match res {
+                Ok(t) => t,
+                Err(e) => {
+                    self.state = match e.kind() {
+                        LexErrorKind::UnexpectedCharacter => State::Recover,
+                        LexErrorKind::UnterminatedStringLiteral => State::Abort,
+                    };
+                    let err = self.toks.next().unwrap().unwrap_err();
+                    return Err(err.into());
+                }
+            };
+
             match infix_binding_power(&tok.kind) {
                 Some((l, r)) => {
                     if l < min_bp {

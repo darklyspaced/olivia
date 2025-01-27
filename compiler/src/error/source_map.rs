@@ -19,7 +19,7 @@ impl<'de> SourceMap {
     }
 
     /// Returns the line, and line number of the token
-    pub fn line_from_tok(&'de self, tok: &Token<'de>) -> (usize, &'de str) {
+    fn line_from_tok(&'de self, tok: &Token<'de>) -> (usize, &'de str) {
         let start = tok.lexeme.as_ptr() as usize - self.source.as_ptr() as usize;
 
         self.line_from_offset(start)
@@ -48,6 +48,7 @@ impl<'de> SourceMap {
         let last_char = line.chars().next_back().map_or(0, |char| char.len_utf8());
 
         RawCtxt {
+            path: self.path.to_string_lossy().to_string(),
             line: String::from(line),
             num: lines.count() + 1,
             annotation_range: (line.len() - last_char, line.len()),
@@ -65,6 +66,7 @@ impl<'de> SourceMap {
         let (start, end) = (start - line_offset, end - line_offset);
 
         RawCtxt {
+            path: self.path.to_string_lossy().to_string(),
             line: String::from(line),
             num,
             annotation_range: (start, end),

@@ -21,7 +21,7 @@ pub enum Colour {
 }
 
 impl Formatted {
-    pub fn new(text: String) -> Self {
+    pub fn from(text: String) -> Self {
         Self {
             text,
             ..Default::default()
@@ -51,8 +51,9 @@ impl Formatted {
 /// here: https://stackoverflow.com/a/33206814
 impl Display for Formatted {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let start_escape_code = r#"\003["#;
+        let start_escape_code = "\x1b[";
         let end_escape_code = "m";
+        let reset = "\x1b[0m"; // so that whatever outputted after that is normal
 
         let mut codes = vec![];
         if self.bold {
@@ -74,12 +75,10 @@ impl Display for Formatted {
             }
         }
 
-        writeln!(
+        write!(
             f,
-            "{}{}{}{}",
-            start_escape_code,
-            codes.join(","),
-            end_escape_code,
+            "{start_escape_code}{}{end_escape_code}{}{reset}",
+            codes.join(";"),
             self.text
         )
     }

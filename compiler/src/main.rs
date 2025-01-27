@@ -1,5 +1,9 @@
 use clap::{Parser, Subcommand};
-use compiler::{ast::Parser as OParser, error::source_map::SourceMap, lexer::Lexer};
+use compiler::{
+    ast::Parser as OParser,
+    error::{report::Report, source_map::SourceMap},
+    lexer::Lexer,
+};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -32,7 +36,7 @@ fn main() {
             let lexer = Lexer::new(&source_map);
 
             let mut parser = OParser::new(lexer, &source_map);
-            println!("{}", parser.parse().unwrap_err());
+            println!("{}", Report::from(dbg!(parser.parse().unwrap_err())));
         }
         Commands::Tokenize { filename } => {
             let source_map = SourceMap::from(filename);
@@ -45,7 +49,7 @@ fn main() {
                         println!("{}", tok);
                     }
                     Err(e) => {
-                        println!("{}", e);
+                        println!("{}", Report::from(e));
                     }
                 }
             }

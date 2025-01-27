@@ -1,14 +1,13 @@
-use std::fmt::Debug;
 use std::fmt::Display;
 
-use lerr::LexError;
-use lerr::LexErrorKind;
-use perr::ParseError;
-use perr::ParseErrorKind;
+use colour::formatted::{Colour, Formatted};
+use lerr::{LexError, LexErrorKind};
+use perr::{ParseError, ParseErrorKind};
 use reportable::{Ctxt, Reportable};
 
 pub mod lerr;
 pub mod perr;
+pub mod report;
 pub mod reportable;
 pub mod source_map;
 
@@ -48,15 +47,6 @@ where
 
     fn code(&self) -> usize {
         1
-    }
-}
-
-impl<E> Display for Error<E>
-where
-    E: Reportable,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "error[{}]: {}", self.code(), self.msg())
     }
 }
 
