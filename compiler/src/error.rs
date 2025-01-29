@@ -1,6 +1,3 @@
-use std::fmt::Display;
-
-use colour::formatted::{Colour, Formatted};
 use lerr::{LexError, LexErrorKind};
 use perr::{ParseError, ParseErrorKind};
 use reportable::{Ctxt, Reportable};
@@ -10,6 +7,7 @@ pub mod perr;
 pub mod report;
 pub mod reportable;
 pub mod source_map;
+pub mod span;
 
 #[derive(Debug)]
 /// The main error type produced by the compiler
@@ -18,7 +16,7 @@ where
     E: Reportable,
 {
     /// The actual error
-    pub inner: E,
+    pub inner: Box<E>,
 }
 
 impl Error<ParseError> {
@@ -55,7 +53,9 @@ where
     E: Reportable,
 {
     fn from(value: E) -> Self {
-        Self { inner: value }
+        Self {
+            inner: Box::new(value),
+        }
     }
 }
 

@@ -1,9 +1,8 @@
-use crate::lexer::TokenKind;
-
 use super::{
     lerr::LexErrorKind,
     reportable::{Ctxt, RawCtxt, Reportable},
 };
+use crate::lexer::TokenKind;
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -15,12 +14,14 @@ pub struct ParseError {
 #[derive(Debug)]
 pub enum ParseErrorKind {
     Lexing(LexErrorKind),
-    ExpectedExprFoundEOF,
-    ExpectedOpFound(String),
-    ExpectedOperandFound(String),
-    ExpectedIdentFound(String),
-    ExpectedSemicolonFound(String),
+    ExpExprFound(String),
+    ExpOpFound(String),
+    ExpOperandFound(String),
+    ExpIdentFound(String),
+    ExpSemicolonFound(String),
     Expected(Vec<TokenKind>, String),
+    /// Places where an error kind is expected but it will never be produced
+    Unreachable,
 }
 
 impl Reportable for ParseError {
@@ -48,19 +49,20 @@ impl ParseErrorKind {
     pub fn annotation(&self) -> String {
         match self {
             ParseErrorKind::Lexing(lex_error_kind) => lex_error_kind.annotation(),
-            ParseErrorKind::ExpectedExprFoundEOF => String::from("expected expr here"),
-            ParseErrorKind::ExpectedOpFound(_) => format!("expected op"),
-            ParseErrorKind::ExpectedOperandFound(_) => format!("expected operand"),
-            ParseErrorKind::ExpectedIdentFound(_) => format!("expected ident"),
-            ParseErrorKind::ExpectedSemicolonFound(_) => format!("expected semicolon"),
-            ParseErrorKind::Expected(vec, x) => {
+            ParseErrorKind::ExpExprFound(_) => String::from("expected expr here"),
+            ParseErrorKind::ExpOpFound(_) => "expected op".to_string(),
+            ParseErrorKind::ExpOperandFound(_) => "expected operand".to_string(),
+            ParseErrorKind::ExpIdentFound(_) => "expected ident".to_string(),
+            ParseErrorKind::ExpSemicolonFound(_) => "expected semicolon".to_string(),
+            ParseErrorKind::Expected(vec, _) => {
                 let list = vec
                     .iter()
                     .map(|kind| format!("`{}`", kind.to_string()))
                     .collect::<Vec<_>>()
                     .join(",");
-                format!("expected one of {list}")
+                format!("expected one of `{list}`")
             }
+            ParseErrorKind::Unreachable => unreachable!(),
         }
     }
 
@@ -68,19 +70,19 @@ impl ParseErrorKind {
     pub fn message(&self) -> String {
         match self {
             ParseErrorKind::Lexing(lex_error_kind) => lex_error_kind.message(),
-            ParseErrorKind::ExpectedExprFoundEOF => {
-                String::from("found EOF in place of an expression ")
+            ParseErrorKind::ExpExprFound(x) => {
+                format!("found `{x}` in place of an expression")
             }
-            ParseErrorKind::ExpectedOpFound(x) => {
+            ParseErrorKind::ExpOpFound(x) => {
                 format!("found `{}` where operator was expected", x)
             }
-            ParseErrorKind::ExpectedOperandFound(x) => {
+            ParseErrorKind::ExpOperandFound(x) => {
                 format!("found `{}` where operand was expected", x)
             }
-            ParseErrorKind::ExpectedIdentFound(x) => {
+            ParseErrorKind::ExpIdentFound(x) => {
                 format!("found `{}` where ident was expected", x)
             }
-            ParseErrorKind::ExpectedSemicolonFound(x) => {
+            ParseErrorKind::ExpSemicolonFound(x) => {
                 format!("found `{x}` where semicolon was expected")
             }
             ParseErrorKind::Expected(vec, x) => {
@@ -91,6 +93,7 @@ impl ParseErrorKind {
                     .join(",");
                 format!("expected one of {list}, found {x}")
             }
+            ParseErrorKind::Unreachable => unreachable!(),
         }
     }
 }

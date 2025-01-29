@@ -2,12 +2,12 @@ use std::fmt::Display;
 
 /// Primitive types
 #[derive(Debug)]
-pub enum Ty {
+pub enum Value {
     Integer(i128),
     Float(f64),
 }
 
-impl Display for Ty {
+impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Integer(i) => write!(f, "{}", i),
@@ -18,7 +18,7 @@ impl Display for Ty {
 
 macro_rules! impl_from {
     ($wrapper:path; $inner_type:ty; $($from:ty),+) => {
-        $(impl From<$from> for Ty {
+        $(impl From<$from> for Value {
             fn from(value: $from) -> Self {
                 $wrapper(<$inner_type>::from(value))
             }
@@ -26,4 +26,4 @@ macro_rules! impl_from {
     };
 }
 
-impl_from!(Ty::Integer; i128; u8, u16, u32, u64);
+impl_from!(Value::Integer; i128; u8, u16, u32, u64);

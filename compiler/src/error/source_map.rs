@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use crate::lexer::Token;
 
 use super::reportable::RawCtxt;
+use super::span::Span;
 
 pub struct SourceMap {
     source: String,
@@ -15,6 +16,14 @@ impl<'de> SourceMap {
         let path = PathBuf::from(path);
         let source = read_to_string(&path).expect("failed to read file");
         Self { source, path }
+    }
+
+    /// Used during parsing to attach spans to AST
+    pub fn span_from_tok(&'de self, tok: &Token<'de>) -> Span {
+        let start = tok.lexeme.as_ptr() as usize - self.source.as_ptr() as usize;
+        let end = start + tok.lexeme.len();
+
+        Span::from(start, end)
     }
 
     /// Returns gleaned context from token
@@ -34,22 +43,6 @@ impl<'de> SourceMap {
             annotation_range: (rel_start, rel_end),
             code_pos: None,
         }
-    }
-
-    /// Returns the line, and line number of the offset
-    fn line_from_offset(&'de self, offset: usize) -> (usize, &'de str) {
-        let mut prog = 0;
-        let (num, line) = self
-            .source
-            .lines()
-            .enumerate()
-            .find(|(_, line)| {
-                prog += line.len();
-                prog >= offset
-            })
-            .expect("offset not in source");
-
-        (num + 1, line)
     }
 
     /// Returns the last line and it's line number. This points to one past the last character on
@@ -89,6 +82,22 @@ impl<'de> SourceMap {
             annotation_range: (start, end),
             code_pos: None,
         }
+    }
+
+    /// Returns the line, and line number of the offset
+    fn line_from_offset(&'de self, offset: usize) -> (usize, &'de str) {
+        let mut prog = 0;
+        let (num, line) = self
+            .source
+            .lines()
+            .enumerate()
+            .find(|(_, line)| {
+                prog += line.len();
+                prog >= offset
+            })
+            .expect("offset not in source");
+
+        (num + 1, line)
     }
 
     pub fn source(&self) -> &str {

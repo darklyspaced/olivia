@@ -9,37 +9,30 @@ use crate::{
         lerr::LexErrorKind,
         perr::{ParseError, ParseErrorKind as PEKind},
         source_map::SourceMap,
+        span::Span,
     },
     lexer::{Lexer, Token, TokenKind},
-    ty::Ty,
+    ty::Value,
 };
 
 type Error = error::Error<ParseError>;
 
-macro_rules! lex_err {
-    ($self:ident, $err:ident, $until:expr) => {
-        $self.state = match $err.kind() {
-            LexErrorKind::UnexpectedCharacter => State::Recover($until),
-            LexErrorKind::UnterminatedStringLiteral => State::Abort,
-        };
-        let err = $self.toks.next().unwrap().unwrap_err();
-        return Err(err.into());
-    };
-}
-
 macro_rules! error {
-    ($self:ident, $kind:expr, $tok:expr) => {
+    ($self:ident, $kind:expr, $tok:expr) => {{
+        let context = Some(
+            $self
+                .source_map
+                .ctxt_from_tok($tok)
+                .with(line!(), column!()),
+        );
+        $self.state = State::Recover;
         return Err(ParseError {
             kind: $kind,
-            ctxt: Some(
-                $self
-                    .source_map
-                    .ctxt_from_tok($tok)
-                    .with(line!(), column!()),
-            ),
+            ctxt: context,
         }
-        .into())
-    };
+        .into());
+    }};
+    // if it's something to do with an EOF
     ($self:ident, $kind:expr) => {
         return Err(ParseError {
             kind: $kind,
@@ -50,20 +43,31 @@ macro_rules! error {
 }
 
 #[derive(Debug)]
+pub struct Ident;
+
+#[derive(Debug)]
+/// The spans of higher level things are the sums of the spans of their components
 pub enum Node {
-    Statement,
-    Declaration,
+    Statement(Ident),
+    Declaration(Ident, Box<Expr>),
     Expr(Expr),
 }
 
 #[derive(Debug)]
 pub enum Expr {
-    BinOp(TokenKind, Box<Expr>, Box<Expr>),
-    UnaryOp(TokenKind, Box<Expr>),
-    Atom(Ty),
+    BinOp(Op, Box<Expr>, Box<Expr>),
+    UnaryOp(Op, Box<Expr>),
+    Atom(Value),
 }
 
-pub enum Op {
+#[derive(Debug)]
+pub struct Op {
+    kind: OpKind,
+    span: Span,
+}
+
+#[derive(Debug)]
+pub enum OpKind {
     Add,
     Mult,
     Div,
@@ -84,17 +88,18 @@ impl Iterator for Parser<'_> {
         loop {
             match &self.state {
                 State::Parse => return Some(Self::parse(self)),
-                State::Recover(kinds) => {
+                State::Recover => {
                     while self
                         .toks
                         .next_if(|tok| {
                             tok.as_ref().is_ok_and(|x| {
-                                for kind in kinds {
-                                    if x.kind == *kind {
-                                        return true;
-                                    }
-                                }
-                                false
+                                matches!(
+                                    x.kind,
+                                    TokenKind::Semicolon
+                                        | TokenKind::While
+                                        | TokenKind::Equal
+                                        | TokenKind::For
+                                )
                             })
                         })
                         .is_some()
@@ -111,8 +116,8 @@ impl Iterator for Parser<'_> {
 pub enum State {
     /// Parse
     Parse,
-    /// Recover until we see one of`.0`
-    Recover(Vec<TokenKind>),
+    /// Recover until we see a statement boundary
+    Recover,
     /// Return None ad infinitum
     Abort,
 }
@@ -132,6 +137,26 @@ impl<'de> Parser<'de> {
         }
     }
 
+    /// Peeks the next token and handles error cases. `err_kind` is for the EOF case
+    fn peek(&mut self, err_kind: PEKind) -> Result<&Token, Error> {
+        if let Some(Err(e)) = self.toks.peek() {
+            let kind = e.kind();
+            self.state = match kind {
+                LexErrorKind::UnexpectedCharacter => State::Recover,
+                LexErrorKind::UnterminatedStringLiteral => State::Abort,
+            };
+
+            let err = self.toks.next().unwrap().unwrap_err();
+            return Err(err.into());
+        }
+
+        match self.toks.peek() {
+            Some(Ok(tok)) => Ok(tok),
+            Some(Err(_)) => unreachable!(),
+            None => error!(self, err_kind),
+        }
+    }
+
     pub fn parse(&mut self) -> Result<Node, Error> {
         if self
             .toks
@@ -144,166 +169,132 @@ impl<'de> Parser<'de> {
         }
     }
 
+    /// Should only be used the case that the next token exists but isn't what it should be.
+    ///
+    /// This returns a result so that it can easily be returned by the parser function
+    fn make_err(&mut self, kind: impl FnOnce(String) -> PEKind) -> Error {
+        self.state = State::Recover;
+
+        let erroneous_tok = self
+            .toks
+            .next()
+            .expect("shouldn't be EOF")
+            .expect("should have been a valid token, not error");
+        let kind = kind(String::from(erroneous_tok.lexeme));
+        let context = Some(
+            self.source_map
+                .ctxt_from_tok(&erroneous_tok)
+                .with(line!(), column!()),
+        );
+        ParseError {
+            kind,
+            ctxt: context,
+        }
+        .into()
+    }
+
     /// Parse a declaration, given that `let` has already been consumed
     fn declaration(&mut self) -> Result<Node, Error> {
         // ident
-        match self.toks.peek() {
-            Some(res) => match res {
-                Ok(tok) => match tok.kind {
-                    TokenKind::Ident => {
-                        let _ident = self.toks.next();
-                    }
-                    _ => {
-                        self.state = State::Recover(vec![TokenKind::Equal, TokenKind::Semicolon]);
-                        error!(
-                            self,
-                            PEKind::ExpectedIdentFound(String::from(tok.lexeme)),
-                            tok
-                        )
-                    }
-                },
-                Err(e) => {
-                    lex_err!(self, e, vec![TokenKind::Equal]);
-                }
-            },
-            None => error!(self, PEKind::ExpectedIdentFound(String::from("EOF"))),
+        let i_err = |x| PEKind::ExpIdentFound(x);
+        let ident = self.peek(i_err(String::from("EOF")))?;
+        match ident.kind {
+            TokenKind::Ident => {
+                let _ident = self.toks.next();
+            }
+            _ => {
+                return Err(self.make_err(i_err));
+            }
         }
 
-        // equals + expr OR semi
-        match self.toks.peek() {
-            Some(res) => match res {
-                Ok(tok) => match tok.kind {
-                    TokenKind::Semicolon => todo!("bare decl with no value"),
-                    TokenKind::Equal => {
-                        self.toks.next();
+        let s_err = |x| PEKind::ExpSemicolonFound(x);
+        let branch = self.peek(s_err(String::from("EOF")))?;
+        match branch.kind {
+            TokenKind::Semicolon => todo!("bare decl with no value"),
+            TokenKind::Equal => {
+                self.toks.next();
 
-                        let expr = self.expr(0);
-                        let Ok(expr) = expr else {
-                            self.state = State::Recover(vec![TokenKind::Semicolon]);
-                            return Err(expr.unwrap_err());
-                        };
+                let res = self.expr(0);
+                let Ok(expr) = res else {
+                    self.state = State::Recover;
+                    return Err(res.unwrap_err());
+                };
 
-                        match self.toks.peek() {
-                            Some(res) => match res {
-                                Ok(tok) => match tok {},
-                            },
-                            None => {
-                                error!(self, PEKind::ExpectedSemicolonFound(String::from("EOF")))
-                            }
-                        }
+                let semicolon = self.peek(s_err(String::from("EOF")))?;
 
-                        Ok(Node::Expr(Expr::Atom(Ty::Integer(0))))
-                    }
-                    _ => {
-                        self.state = State::Recover(vec![TokenKind::Semicolon, TokenKind::Equal]);
-                        error!(
-                            self,
-                            PEKind::Expected(
-                                vec![TokenKind::Semicolon, TokenKind::Equal],
-                                String::from(tok.lexeme)
-                            )
-                        );
-                    }
-                },
-                Err(e) => {
-                    lex_err!(self, e, vec![TokenKind::Equal, TokenKind::Semicolon]);
+                if let TokenKind::Semicolon = semicolon.kind {
+                    self.toks.next();
+                } else {
+                    return Err(self.make_err(s_err));
                 }
-            },
-            None => error!(self, PEKind::ExpectedSemicolonFound(String::from("EOF"))),
+
+                Ok(Node::Declaration(Ident, Box::new(expr)))
+            }
+            _ => Err(self.make_err(|tok| {
+                PEKind::Expected(vec![TokenKind::Semicolon, TokenKind::Equal], tok)
+            })),
         }
     }
 
     /// An implementation of Pratt Parsing to deal with mathematical operations. All calls to this
     /// function from outside of itself must have `min_bp` = 0.
     fn expr(&mut self, min_bp: u8) -> Result<Expr, Error> {
-        let next = match self.toks.peek() {
-            Some(x) => match x {
-                Ok(_) => self.toks.next().unwrap()?,
-                Err(e) => {
-                    self.state = match e.kind() {
-                        LexErrorKind::UnexpectedCharacter => {
-                            State::Recover(vec![TokenKind::Semicolon])
-                        }
-                        LexErrorKind::UnterminatedStringLiteral => State::Abort,
-                    };
-                    let err = self.toks.next().unwrap().unwrap_err();
-                    return Err(err.into());
-                }
-            },
-            None => {
-                return Err(ParseError {
-                    kind: PEKind::ExpectedExprFoundEOF,
-                    ctxt: Some(self.source_map.ctxt_from_end().with(line!(), column!())),
-                }
-                .into());
-            }
-        };
+        let next = self.peek(PEKind::ExpExprFound(String::from("EOF")))?;
         let mut lhs = match next.kind {
             TokenKind::Number | TokenKind::Float => Expr::Atom(next.val()),
             _ => {
-                return Err(ParseError {
-                    kind: PEKind::ExpectedOperandFound(String::from(next.lexeme)),
-                    ctxt: Some(self.source_map.ctxt_from_tok(&next)),
-                }
-                .into());
+                return Err(self.make_err(PEKind::ExpOperandFound));
             }
         };
+        self.toks.next();
 
-        while let Some(res) = self.toks.peek() {
-            let tok = match res {
-                Ok(t) => t,
-                Err(e) => {
-                    lex_err!(self, e, vec![TokenKind::Semicolon]);
-                }
+        while self.toks.peek().is_some() {
+            let tok = self.peek(PEKind::Unreachable)?; // lex errors annoying
+
+            let op_kind = match OpKind::try_from(tok.kind) {
+                Ok(op) => op,
+                Err(_) => break,
             };
 
-            match infix_binding_power(&tok.kind) {
-                Some((l, r)) => {
-                    if l < min_bp {
-                        // at this point, we fold towards the left
-                        break;
-                    }
+            let (l, r) = infix_binding_power(&op_kind);
+            if l < min_bp {
+                // at this point, we fold towards the left
+                break;
+            }
 
-                    // only want to consume once we know that we're folding so that after
-                    // folding we can resume on the operator that had a lower BP to the left of
-                    // it
-                    let next = self.toks.next().unwrap()?;
-                    let rhs = self.expr(r)?;
-                    lhs = Expr::BinOp(next.kind, Box::new(lhs), Box::new(rhs))
-                }
-
-                None => {
-                    return Err(ParseError {
-                        kind: PEKind::ExpectedOpFound(tok.lexeme.to_string()),
-                        ctxt: Some(self.source_map.ctxt_from_tok(tok).with(line!(), column!())),
-                    }
-                    .into());
-                }
+            // only want to consume once we know that we're folding so that after
+            // folding we can resume on the operator that had a lower BP to the left of
+            // it
+            let tok_op = self.toks.next().unwrap().unwrap();
+            let op = Op {
+                kind: op_kind,
+                span: self.source_map.span_from_tok(&tok_op),
             };
+            let rhs = self.expr(r)?;
+            lhs = Expr::BinOp(op, Box::new(lhs), Box::new(rhs))
         }
 
         Ok(lhs)
     }
 }
 
-fn infix_binding_power(op: &TokenKind) -> Option<(u8, u8)> {
+fn infix_binding_power(op: &OpKind) -> (u8, u8) {
     match op {
-        TokenKind::Plus | TokenKind::Minus => Some((1, 2)),
-        TokenKind::Star | TokenKind::Slash => Some((3, 4)),
-        _ => None,
+        OpKind::Add | OpKind::Sub => (1, 2),
+        OpKind::Mult | OpKind::Div => (3, 4),
     }
 }
 
-impl<'de> TryFrom<Token<'de>> for Op {
-    type Error = PEKind;
+impl TryFrom<TokenKind> for OpKind {
+    type Error = ();
 
-    fn try_from(value: Token<'de>) -> Result<Self, Self::Error> {
-        match value.kind {
-            TokenKind::Plus => Ok(Op::Add),
-            TokenKind::Minus => Ok(Op::Sub),
-            TokenKind::Star => Ok(Op::Mult),
-            TokenKind::Slash => Ok(Op::Div),
-            _ => Err(PEKind::ExpectedOpFound(String::from(value.lexeme))),
+    fn try_from(value: TokenKind) -> Result<Self, Self::Error> {
+        match value {
+            TokenKind::Plus => Ok(OpKind::Add),
+            TokenKind::Minus => Ok(OpKind::Sub),
+            TokenKind::Star => Ok(OpKind::Mult),
+            TokenKind::Slash => Ok(OpKind::Div),
+            _ => Err(()),
         }
     }
 }
@@ -315,5 +306,22 @@ impl Display for Expr {
             Expr::UnaryOp(token_kind, e) => write!(f, "({}{})", token_kind, e),
             Expr::Atom(ty) => write!(f, "{}", ty),
         }
+    }
+}
+
+impl Display for OpKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            OpKind::Add => "+",
+            OpKind::Mult => "*",
+            OpKind::Div => "/",
+            OpKind::Sub => "-",
+        })
+    }
+}
+
+impl Display for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.kind)
     }
 }

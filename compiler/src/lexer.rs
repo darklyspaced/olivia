@@ -6,7 +6,7 @@ use crate::{
         lerr::{LexError, LexErrorKind},
         source_map::SourceMap,
     },
-    ty::Ty,
+    ty::Value,
 };
 
 pub struct Lexer<'de> {
@@ -102,7 +102,7 @@ pub struct Token<'de> {
 
 impl Token<'_> {
     /// Returns the populated type of the token
-    pub fn val(&self) -> Ty {
+    pub fn val(&self) -> Value {
         match self.kind {
             TokenKind::Number => self.literal.unwrap().parse::<u64>().unwrap().into(),
             _ => panic!("{} doesn't have a type, obviously.", self.kind),

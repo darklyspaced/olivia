@@ -36,7 +36,10 @@ fn main() {
             let lexer = Lexer::new(&source_map);
 
             let mut parser = OParser::new(lexer, &source_map);
-            println!("{}", Report::from(dbg!(parser.parse().unwrap_err())));
+            match parser.parse() {
+                Ok(x) => println!("{:?}", x),
+                Err(e) => println!("{}", Report::from(e)),
+            }
         }
         Commands::Tokenize { filename } => {
             let source_map = SourceMap::from(filename);
