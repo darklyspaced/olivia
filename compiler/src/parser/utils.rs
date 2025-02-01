@@ -1,12 +1,13 @@
 use super::{Parser, State};
 
 use crate::{
+    ast::Ident,
     error::{
         self,
         lex_err::LexErrorKind,
         parse_err::{ParseError, ParseErrorKind as PEKind},
     },
-    lexer::{Token, TokenKind},
+    token::{Token, TokenKind},
 };
 
 type Error = error::Error<ParseError>;
@@ -79,11 +80,28 @@ impl Parser<'_> {
         .into()
     }
 
-    pub fn eat(
+    /// Attempts to parse an ident and interns its symbol, returning any errors generated along
+    /// the way
+    pub fn ident(
         &mut self,
-        kind: TokenKind,
-        err: impl FnOnce(String) -> PEKind + Clone,
-    ) -> Result<Token, Error> {
+        make_kind: impl FnOnce(String) -> PEKind + Clone,
+    ) -> Result<Ident, Error> {
+        let next = self.peek(make_kind.clone())?;
+        let ident = match next.kind {
+            TokenKind::Ident => self.toks.next().unwrap().unwrap(),
+            _ => return Err(self.make_err(make_kind)),
+        };
+
+        Ok(crate::ast::Ident {
+            name: self.interner.intern(ident.lexeme),
+            span: self.source_map.span_from_tok(&ident),
+        })
+    }
+
+    pub fn eat<G>(&mut self, kind: TokenKind, err: G) -> Result<Token, Error>
+    where
+        G: FnOnce(String) -> PEKind + Clone,
+    {
         let equals = self.peek(err.clone())?;
         let tok = if equals.kind == kind {
             self.toks.next().unwrap().unwrap()

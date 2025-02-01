@@ -3,7 +3,7 @@ use std::{collections::HashMap, mem};
 /// An id that points to a interned `String`. Ideally within the compiler itself there should be
 /// very few free floating `Strings` and should be `Idx`s instead for efficiency.
 #[derive(Clone, Copy, Debug)]
-pub struct Idx(u32);
+pub struct Symbol(u32);
 
 /// This interner primarily employs two strategies to be efficient. The first is that all strings
 /// are concatenated and then adding strings just pumps the pointer to the buffer. However, we need
@@ -12,7 +12,7 @@ pub struct Idx(u32);
 ///
 /// The interner internally then holds references to these bufs and hands them out at needed.
 pub struct Interner {
-    map: HashMap<&'static str, Idx>,
+    map: HashMap<&'static str, Symbol>,
     vec: Vec<&'static str>,
     buf: String,
     full: Vec<String>,
@@ -31,19 +31,19 @@ impl Interner {
 
     /// Interns the given `name` and copies it and then returns it's new identity in the form of
     /// `Idx`
-    pub fn intern(&mut self, name: &str) -> Idx {
+    pub fn intern(&mut self, name: &str) -> Symbol {
         if let Some(&id) = self.map.get(name) {
             return id;
         }
         let name = unsafe { self.alloc(name) };
-        let id = Idx(self.map.len() as u32);
+        let id = Symbol(self.map.len() as u32);
         self.map.insert(name, id);
         self.vec.push(name);
 
         id
     }
 
-    pub fn lookup(&self, id: Idx) -> &str {
+    pub fn lookup(&self, id: Symbol) -> &str {
         self.vec[id.0 as usize]
     }
 

@@ -1,7 +1,7 @@
 use std::fs::read_to_string;
 use std::path::PathBuf;
 
-use crate::lexer::Token;
+use crate::token::Token;
 
 use super::reportable::RawCtxt;
 use super::span::Span;

@@ -1,27 +1,44 @@
 use std::fmt::{Debug, Display};
 
-use crate::{error::span::Span, interner::Idx, lexer::TokenKind, value::Value};
+use crate::{error::span::Span, interner::Symbol, token::TokenKind, value::Value};
 
 #[derive(Debug)]
 /// The spans of higher level things are the sums of the spans of their components
 pub enum Node {
-    Statement,
-    Declaration(Ident, Option<Box<Expr>>), // spanned + derived
-    Expr(Expr),                            // derived
-    Assignment(Ident, Box<Expr>),          // spanned + derived
+    Block(Vec<Box<Node>>),
+    /// Identifier, then the expression being assigned to it
+    Declaration(Ident, Option<Expr>),
+    /// The name of the function, the parameters to the function, block, and return type
+    FunDeclaration {
+        ident: Ident,
+        params: Vec<(TyIdent, BindIdent)>,
+        ret: Option<TyIdent>,
+        block: Box<Node>,
+    },
+    Assignment(Ident, Expr),
+    Expr(Expr),
 }
 
 #[derive(Debug)]
 pub enum Expr {
-    BinOp(Op, Box<Expr>, Box<Expr>), // spanned + derived
-    UnaryOp(Op, Box<Expr>),          // spanned + derived
-    Atom(Value),                     // spanned
+    BinOp(Op, Box<Expr>, Box<Expr>),
+    UnaryOp(Op, Box<Expr>),
+    FnInvoc(FnIdent, Option<Vec<Box<Expr>>>),
+    Ident(BindIdent),
+    Value(Value),
 }
 
 #[derive(Debug)]
-/// Needs to implement string interning
+pub struct BindIdent(pub Ident);
+#[derive(Debug)]
+pub struct FnIdent(pub Ident);
+#[derive(Debug)]
+pub struct TyIdent(pub Ident);
+
+#[derive(Debug)]
+/// An identifier to the function, type, or variable
 pub struct Ident {
-    pub name: Idx,
+    pub name: Symbol,
     pub span: Span,
 }
 

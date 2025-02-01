@@ -1,8 +1,9 @@
+use crate::token::TokenKind;
+
 use super::{
     lex_err::LexErrorKind,
     reportable::{Ctxt, RawCtxt, Reportable},
 };
-use crate::lexer::TokenKind;
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -20,6 +21,8 @@ pub enum ParseErrorKind {
     ExpIdentFound(String),
     ExpSemicolonFound(String),
     ExpEqualFound(String),
+    ExpLParenFound(String),
+    ExpRParenFound(String),
     ExpFound(Vec<TokenKind>, String),
     SolelyAssDecl,
     /// Places where an error kind is expected but it will never be produced
@@ -55,7 +58,7 @@ impl ParseErrorKind {
             ParseErrorKind::ExpOpFound(_) => String::from("expected op"),
             ParseErrorKind::ExpOperandFound(_) => String::from("expected operand"),
             ParseErrorKind::ExpIdentFound(_) => String::from("expected ident"),
-            ParseErrorKind::ExpSemicolonFound(_) => String::from("expected semicolon"),
+            ParseErrorKind::ExpSemicolonFound(_) => String::from("expected `;`"),
             ParseErrorKind::ExpFound(vec, _) => {
                 let list = vec
                     .iter()
@@ -66,7 +69,9 @@ impl ParseErrorKind {
             }
             ParseErrorKind::Unreachable(_) => unreachable!(),
             ParseErrorKind::SolelyAssDecl => String::from("not allowed here"),
-            ParseErrorKind::ExpEqualFound(_) => String::from("expected equals here"),
+            ParseErrorKind::ExpEqualFound(_) => String::from("expected `=`"),
+            ParseErrorKind::ExpLParenFound(_) => String::from("expected `(`"),
+            ParseErrorKind::ExpRParenFound(_) => String::from("expected `)`"),
         }
     }
 
@@ -78,19 +83,25 @@ impl ParseErrorKind {
                 format!("found `{x}` in place of an expression")
             }
             ParseErrorKind::ExpOpFound(x) => {
-                format!("found `{}` where operator was expected", x)
+                format!("found `{x}` where operator was expected")
             }
             ParseErrorKind::ExpOperandFound(x) => {
-                format!("found `{}` where operand was expected", x)
+                format!("found `{x}` where operand was expected")
             }
             ParseErrorKind::ExpIdentFound(x) => {
-                format!("found `{}` where ident was expected", x)
+                format!("found `{x}` where ident was expected")
             }
             ParseErrorKind::ExpEqualFound(x) => {
-                format!("found `{x}` where equals was expected")
+                format!("found `{x}` where `=` was expected")
             }
             ParseErrorKind::ExpSemicolonFound(x) => {
-                format!("found `{x}` where semicolon was expected")
+                format!("found `{x}` where `;` was expected")
+            }
+            ParseErrorKind::ExpLParenFound(x) => {
+                format!("found `{x}` where `(` was expected")
+            }
+            ParseErrorKind::ExpRParenFound(x) => {
+                format!("found `{x}` where `(` was expected")
             }
             ParseErrorKind::ExpFound(vec, x) => {
                 let list = vec
