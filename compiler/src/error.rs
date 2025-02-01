@@ -1,9 +1,9 @@
-use lerr::{LexError, LexErrorKind};
-use perr::{ParseError, ParseErrorKind};
+use lex_err::{LexError, LexErrorKind};
+use parse_err::{ParseError, ParseErrorKind};
 use reportable::{Ctxt, Reportable};
 
-pub mod lerr;
-pub mod perr;
+pub mod lex_err;
+pub mod parse_err;
 pub mod report;
 pub mod reportable;
 pub mod source_map;
@@ -62,7 +62,7 @@ where
 impl From<Error<LexError>> for Error<ParseError> {
     fn from(value: Error<LexError>) -> Self {
         ParseError {
-            kind: perr::ParseErrorKind::Lexing(value.inner.kind),
+            kind: ParseErrorKind::Lexing(value.inner.kind),
             ctxt: value.inner.ctxt,
         }
         .into()

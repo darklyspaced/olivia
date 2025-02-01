@@ -1,5 +1,5 @@
 use super::{
-    lerr::LexErrorKind,
+    lex_err::LexErrorKind,
     reportable::{Ctxt, RawCtxt, Reportable},
 };
 use crate::lexer::TokenKind;
@@ -19,9 +19,11 @@ pub enum ParseErrorKind {
     ExpOperandFound(String),
     ExpIdentFound(String),
     ExpSemicolonFound(String),
-    Expected(Vec<TokenKind>, String),
+    ExpEqualFound(String),
+    ExpFound(Vec<TokenKind>, String),
+    SolelyAssDecl,
     /// Places where an error kind is expected but it will never be produced
-    Unreachable,
+    Unreachable(String),
 }
 
 impl Reportable for ParseError {
@@ -50,11 +52,11 @@ impl ParseErrorKind {
         match self {
             ParseErrorKind::Lexing(lex_error_kind) => lex_error_kind.annotation(),
             ParseErrorKind::ExpExprFound(_) => String::from("expected expr here"),
-            ParseErrorKind::ExpOpFound(_) => "expected op".to_string(),
-            ParseErrorKind::ExpOperandFound(_) => "expected operand".to_string(),
-            ParseErrorKind::ExpIdentFound(_) => "expected ident".to_string(),
-            ParseErrorKind::ExpSemicolonFound(_) => "expected semicolon".to_string(),
-            ParseErrorKind::Expected(vec, _) => {
+            ParseErrorKind::ExpOpFound(_) => String::from("expected op"),
+            ParseErrorKind::ExpOperandFound(_) => String::from("expected operand"),
+            ParseErrorKind::ExpIdentFound(_) => String::from("expected ident"),
+            ParseErrorKind::ExpSemicolonFound(_) => String::from("expected semicolon"),
+            ParseErrorKind::ExpFound(vec, _) => {
                 let list = vec
                     .iter()
                     .map(|kind| format!("`{}`", kind.to_string()))
@@ -62,7 +64,9 @@ impl ParseErrorKind {
                     .join(",");
                 format!("expected one of `{list}`")
             }
-            ParseErrorKind::Unreachable => unreachable!(),
+            ParseErrorKind::Unreachable(_) => unreachable!(),
+            ParseErrorKind::SolelyAssDecl => String::from("not allowed here"),
+            ParseErrorKind::ExpEqualFound(_) => String::from("expected equals here"),
         }
     }
 
@@ -82,10 +86,13 @@ impl ParseErrorKind {
             ParseErrorKind::ExpIdentFound(x) => {
                 format!("found `{}` where ident was expected", x)
             }
+            ParseErrorKind::ExpEqualFound(x) => {
+                format!("found `{x}` where equals was expected")
+            }
             ParseErrorKind::ExpSemicolonFound(x) => {
                 format!("found `{x}` where semicolon was expected")
             }
-            ParseErrorKind::Expected(vec, x) => {
+            ParseErrorKind::ExpFound(vec, x) => {
                 let list = vec
                     .iter()
                     .map(|kind| format!("`{}`", kind.to_string()))
@@ -93,7 +100,10 @@ impl ParseErrorKind {
                     .join(",");
                 format!("expected one of {list}, found {x}")
             }
-            ParseErrorKind::Unreachable => unreachable!(),
+            ParseErrorKind::SolelyAssDecl => {
+                String::from("only assignment and declarations are supported as of now")
+            }
+            ParseErrorKind::Unreachable(_) => unreachable!(),
         }
     }
 }

@@ -1,8 +1,9 @@
 use clap::{Parser, Subcommand};
 use compiler::{
-    ast::Parser as OParser,
     error::{report::Report, source_map::SourceMap},
+    interner::Interner,
     lexer::Lexer,
+    parser::Parser as OParser,
 };
 
 #[derive(Parser)]
@@ -34,9 +35,10 @@ fn main() {
             let source_map = SourceMap::from(filename);
 
             let lexer = Lexer::new(&source_map);
+            let mut interner = Interner::with_capacity(1024);
 
-            let mut parser = OParser::new(lexer, &source_map);
-            match parser.parse() {
+            let mut parser = OParser::new(lexer, &source_map, &mut interner);
+            match parser.stmt() {
                 Ok(x) => println!("{:?}", x),
                 Err(e) => println!("{}", Report::from(e)),
             }

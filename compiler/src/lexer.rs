@@ -3,10 +3,10 @@ use std::{fmt::Display, str::Chars};
 use crate::{
     error::{
         Error,
-        lerr::{LexError, LexErrorKind},
+        lex_err::{LexError, LexErrorKind},
         source_map::SourceMap,
     },
-    ty::Value,
+    value::ValueKind,
 };
 
 pub struct Lexer<'de> {
@@ -101,8 +101,8 @@ pub struct Token<'de> {
 }
 
 impl Token<'_> {
-    /// Returns the populated type of the token
-    pub fn val(&self) -> Value {
+    /// Returns the populated value kind of the token
+    pub fn val(&self) -> ValueKind {
         match self.kind {
             TokenKind::Number => self.literal.unwrap().parse::<u64>().unwrap().into(),
             _ => panic!("{} doesn't have a type, obviously.", self.kind),
