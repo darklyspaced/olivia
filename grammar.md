@@ -7,3 +7,6 @@ for -> unimplemented!()
 while -> unimplemented!()
 operation -> \any mathematical operation??\
 
+program = block
+block = ["let" ident "=" expression ";"]+
+        | 

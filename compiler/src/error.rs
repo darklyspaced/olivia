@@ -1,3 +1,5 @@
+use std::backtrace::Backtrace;
+
 use lex_err::{LexError, LexErrorKind};
 use parse_err::{ParseError, ParseErrorKind};
 use reportable::{Ctxt, Reportable};
@@ -17,6 +19,7 @@ where
 {
     /// The actual error
     pub inner: Box<E>,
+    pub backtrace: Backtrace,
 }
 
 impl Error<ParseError> {
@@ -55,6 +58,7 @@ where
     fn from(value: E) -> Self {
         Self {
             inner: Box::new(value),
+            backtrace: Backtrace::capture(),
         }
     }
 }

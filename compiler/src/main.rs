@@ -8,9 +8,11 @@ use compiler::{
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
-struct Malatium {
+struct Olivia {
     #[command(subcommand)]
     command: Commands,
+    #[arg(short, long)]
+    debug: bool,
 }
 
 #[derive(Subcommand)]
@@ -28,19 +30,32 @@ enum Commands {
 }
 
 fn main() {
-    let malatium = Malatium::parse();
+    let olivia = Olivia::parse();
 
-    match &malatium.command {
+    match &olivia.command {
         Commands::Parse { filename } => {
             let source_map = SourceMap::from(filename);
 
             let lexer = Lexer::new(&source_map);
             let mut interner = Interner::with_capacity(1024);
 
-            let mut parser = OParser::new(lexer, &source_map, &mut interner);
-            match parser.stmt() {
-                Ok(x) => println!("{:?}", x),
-                Err(e) => println!("{}", Report::from(e)),
+            let parser = OParser::new(lexer, &source_map, &mut interner);
+            for stmt in parser {
+                match stmt {
+                    Ok(s) => println!("{s:?}"),
+                    Err(e) => {
+                        if olivia.debug {
+                            println!("{}", e.backtrace);
+                        }
+                        println!("{}", Report::from(e))
+                    }
+                }
+            }
+
+            if !olivia.debug {
+                println!(
+                    "To show backtraces for errors within the compiler itself, enable the `--debug` flag."
+                );
             }
         }
         Commands::Tokenize { filename } => {

@@ -89,7 +89,7 @@ impl<'de> Parser<'de> {
         }
     }
 
-    pub fn stmt(&mut self) -> Result<Node, Error> {
+    fn stmt(&mut self) -> Result<Node, Error> {
         if self
             .toks
             .next_if(|tok| tok.as_ref().is_ok_and(|x| x.kind == TokenKind::Let))
@@ -120,6 +120,8 @@ impl<'de> Parser<'de> {
             self.state = State::Recover;
             return Err(res.unwrap_err());
         };
+
+        let _semicolon = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
         Ok(Node::Assignment(ident, Box::new(expr)))
     }
