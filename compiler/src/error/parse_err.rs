@@ -23,6 +23,9 @@ pub enum ParseErrorKind {
     ExpEqualFound(String),
     ExpLParenFound(String),
     ExpRParenFound(String),
+    ExpLBraceFound(String),
+    ExpRBraceFound(String),
+    ExpBlockFound(String),
     ExpFound(Vec<TokenKind>, String),
     SolelyAssDecl,
     /// Places where an error kind is expected but it will never be produced
@@ -65,13 +68,16 @@ impl ParseErrorKind {
                     .map(|kind| format!("`{}`", kind.to_string()))
                     .collect::<Vec<_>>()
                     .join(",");
-                format!("expected one of `{list}`")
+                format!("expected one of {list}")
             }
             ParseErrorKind::Unreachable(_) => unreachable!(),
             ParseErrorKind::SolelyAssDecl => String::from("not allowed here"),
             ParseErrorKind::ExpEqualFound(_) => String::from("expected `=`"),
             ParseErrorKind::ExpLParenFound(_) => String::from("expected `(`"),
             ParseErrorKind::ExpRParenFound(_) => String::from("expected `)`"),
+            ParseErrorKind::ExpLBraceFound(_) => String::from("expected `{`"),
+            ParseErrorKind::ExpRBraceFound(_) => String::from("expected `}`"),
+            ParseErrorKind::ExpBlockFound(_) => String::from("expected block"),
         }
     }
 
@@ -102,6 +108,15 @@ impl ParseErrorKind {
             }
             ParseErrorKind::ExpRParenFound(x) => {
                 format!("found `{x}` where `(` was expected")
+            }
+            ParseErrorKind::ExpLBraceFound(x) => {
+                format!("found `{x}` where `{{` was expected")
+            }
+            ParseErrorKind::ExpRBraceFound(x) => {
+                format!("found `{x}` where `}}` was expected")
+            }
+            ParseErrorKind::ExpBlockFound(x) => {
+                format!("found `{x}` where a block was expected")
             }
             ParseErrorKind::ExpFound(vec, x) => {
                 let list = vec

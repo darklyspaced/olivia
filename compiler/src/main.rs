@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use colour::formatted::{Colour, Formatted};
 use compiler::{
     error::{report::Report, source_map::SourceMap},
     interner::Interner,
@@ -54,7 +55,10 @@ fn main() {
 
             if !olivia.debug {
                 println!(
-                    "To show backtraces for errors within the compiler itself, enable the `--debug` flag."
+                    "{}",
+                    Formatted::from(
+                        String::from("To show backtraces for errors within the compiler itself, enable the `--debug` flag.")
+                    ).colour(Colour::Yellow)
                 );
             }
         }

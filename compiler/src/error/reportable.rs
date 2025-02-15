@@ -26,7 +26,7 @@ pub struct RawCtxt {
     pub line: String,
     /// Line number
     pub num: usize,
-    /// Offset of annotation, (start, end)
+    /// Offset of annotation, [start, end), non inclusive
     pub annotation_range: (usize, usize),
     /// Where in code this error was generated (line, column)
     pub code_pos: Option<(u32, u32)>,

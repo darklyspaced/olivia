@@ -5,9 +5,9 @@ use crate::{error::span::Span, interner::Symbol, token::TokenKind, value::Value}
 #[derive(Debug)]
 /// The spans of higher level things are the sums of the spans of their components
 pub enum Node {
-    Block(Vec<Box<Node>>),
+    Block(Vec<Node>),
     /// Identifier, then the expression being assigned to it
-    Declaration(Ident, Option<Expr>),
+    Declaration(BindIdent, Option<Expr>),
     /// The name of the function, the parameters to the function, block, and return type
     FunDeclaration {
         ident: Ident,
@@ -23,9 +23,9 @@ pub enum Node {
 pub enum Expr {
     BinOp(Op, Box<Expr>, Box<Expr>),
     UnaryOp(Op, Box<Expr>),
-    FnInvoc(FnIdent, Option<Vec<Box<Expr>>>),
+    FnInvoc(FnIdent, Option<Vec<Expr>>),
     Ident(BindIdent),
-    Value(Value),
+    Atom(Value),
 }
 
 #[derive(Debug)]
@@ -76,6 +76,8 @@ impl Display for Expr {
             Expr::BinOp(token_kind, er, e1) => write!(f, "({} {} {})", token_kind, er, e1),
             Expr::UnaryOp(token_kind, e) => write!(f, "({}{})", token_kind, e),
             Expr::Atom(ty) => write!(f, "{:?}", ty), // TODO: fix this for debug
+            Expr::FnInvoc(ident, x) => write!(f, "{:?}({:?})", ident, x),
+            Expr::Ident(ident) => write!(f, "{:?}", ident),
         }
     }
 }

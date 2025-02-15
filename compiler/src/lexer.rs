@@ -150,12 +150,12 @@ impl<'de> Iterator for Lexer<'de> {
                 ';' => token!(TokenKind::Semicolon),
                 ',' => token!(TokenKind::Comma),
                 '+' => token!(TokenKind::Plus),
-                '-' => token!(TokenKind::Minus),
                 '*' => token!(TokenKind::Star),
                 '=' => token!(TokenKind::Equal, '=', TokenKind::EqualEqual),
                 '!' => token!(TokenKind::Bang, '=', TokenKind::BangEqual),
                 '>' => token!(TokenKind::Greater, '=', TokenKind::GreaterEqual),
                 '<' => token!(TokenKind::Less, '=', TokenKind::LessEqual),
+                '-' => token!(TokenKind::Minus, '>', TokenKind::Arrow),
                 '/' => match self.chars.peek() {
                     Some('/') => {
                         while self.chars.next_if_neq(&'\n').is_some() {}
@@ -176,7 +176,11 @@ impl<'de> Iterator for Lexer<'de> {
                     token!(TokenKind::String, literal)
                 }
                 'a'..='z' | 'A'..='Z' => {
-                    while self.chars.next_if(|c| !c.is_whitespace()).is_some() {}
+                    while self
+                        .chars
+                        .next_if(|c| !c.is_whitespace() && c.is_alphanumeric())
+                        .is_some()
+                    {}
 
                     match &self.source[start..=self.chars.offset()] {
                         "while" => token!(TokenKind::While),

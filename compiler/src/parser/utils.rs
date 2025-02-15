@@ -67,7 +67,7 @@ impl Parser<'_> {
             .next()
             .expect("shouldn't be EOF")
             .expect("should have been a valid token, not error");
-        let kind = make_kind(String::from(erroneous_tok.lexeme));
+        let kind = make_kind(String::from(dbg!(&erroneous_tok).lexeme));
         let context = Some(
             self.source_map
                 .ctxt_from_tok(&erroneous_tok)
@@ -82,14 +82,11 @@ impl Parser<'_> {
 
     /// Attempts to parse an ident and interns its symbol, returning any errors generated along
     /// the way
-    pub fn ident(
-        &mut self,
-        make_kind: impl FnOnce(String) -> PEKind + Clone,
-    ) -> Result<Ident, Error> {
-        let next = self.peek(make_kind.clone())?;
+    pub fn ident(&mut self) -> Result<Ident, Error> {
+        let next = self.peek(PEKind::ExpIdentFound)?;
         let ident = match next.kind {
             TokenKind::Ident => self.toks.next().unwrap().unwrap(),
-            _ => return Err(self.make_err(make_kind)),
+            _ => return Err(self.make_err(PEKind::ExpIdentFound)),
         };
 
         Ok(crate::ast::Ident {

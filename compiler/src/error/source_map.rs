@@ -40,7 +40,7 @@ impl<'de> SourceMap {
             path: self.path.to_string_lossy().to_string(),
             line: String::from(line),
             num,
-            annotation_range: (rel_start, rel_end),
+            annotation_range: dbg!((rel_start, rel_end)),
             code_pos: None,
         }
     }
@@ -92,8 +92,8 @@ impl<'de> SourceMap {
             .lines()
             .enumerate()
             .find(|(_, line)| {
-                prog += line.len();
-                prog >= offset
+                prog += line.len() + '\n'.len_utf8();
+                prog > offset
             })
             .expect("offset not in source");
 

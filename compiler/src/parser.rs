@@ -3,7 +3,7 @@ pub mod utils;
 use std::iter::Peekable;
 
 use crate::{
-    ast::{BindIdent, Expr, Node, Op, OpKind, TyIdent},
+    ast::{BindIdent, Expr, FnIdent, Node, Op, OpKind, TyIdent},
     error::{
         self,
         parse_err::{ParseError, ParseErrorKind as PEKind},
@@ -91,73 +91,89 @@ impl<'de> Parser<'de> {
     }
 
     fn fn_decl(&mut self) -> Result<Node, Error> {
-        if self
-            .toks
-            .next_if(|tok| tok.as_ref().is_ok_and(|x| x.kind == TokenKind::Fn))
-            .is_some()
-        {
-            // fn alr consumed
-            let ident = self.ident(PEKind::ExpIdentFound)?;
-            let _l_paren = self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
+        let _fn = self.toks.next();
+        let ident = self.ident()?;
+        let _l_paren = self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
 
-            let mut params = vec![];
+        let mut params = vec![];
 
-            let mut next =
-                self.peek(|x| PEKind::ExpFound(vec![TokenKind::Ident, TokenKind::RightParen], x))?;
-            if next.kind != TokenKind::RightParen {
-                loop {
-                    let ty = TyIdent(self.ident(PEKind::ExpIdentFound)?);
-                    let binding = BindIdent(self.ident(PEKind::ExpIdentFound)?);
+        let mut next =
+            self.peek(|x| PEKind::ExpFound(vec![TokenKind::Ident, TokenKind::RightParen], x))?;
+        if next.kind != TokenKind::RightParen {
+            loop {
+                let ty = TyIdent(self.ident()?);
+                let binding = BindIdent(self.ident()?);
 
-                    params.push((ty, binding));
+                params.push((ty, binding));
 
-                    let err =
-                        |x| PEKind::ExpFound(vec![TokenKind::Comma, TokenKind::RightParen], x);
-                    next = self.peek(err)?;
-                    match next.kind {
-                        TokenKind::RightParen => {
-                            let _r_paren = self.toks.next();
-                            break;
-                        }
-                        TokenKind::Comma => {
-                            let _comma = self.toks.next();
-                            continue;
-                        }
-                        _ => return Err(self.make_err(err)),
-                    };
-                }
+                let err = |x| PEKind::ExpFound(vec![TokenKind::Comma, TokenKind::RightParen], x);
+                next = self.peek(err)?;
+                match next.kind {
+                    TokenKind::RightParen => {
+                        let _r_paren = self.toks.next();
+                        break;
+                    }
+                    TokenKind::Comma => {
+                        let _comma = self.toks.next();
+                        continue;
+                    }
+                    _ => return Err(self.make_err(err)),
+                };
             }
-
-            let block = self.block()?;
-
-            Ok(Node::FunDeclaration {
-                ident,
-                params,
-                ret: None,
-                block: Box::new(block),
-            })
-        } else {
-            self.block()
         }
+
+        let err = |x| PEKind::ExpFound(vec![TokenKind::LeftBrace, TokenKind::Arrow], x);
+        let branch = self.peek(err)?;
+        let ret = match branch.kind {
+            TokenKind::Arrow => Some(TyIdent(self.ident()?)),
+            TokenKind::LeftBrace => None,
+            _ => return Err(self.make_err(err)),
+        };
+
+        let block = self.block()?;
+
+        Ok(Node::FunDeclaration {
+            ident,
+            params,
+            ret,
+            block: Box::new(block),
+        })
     }
 
-    fn block(&mut self) -> Result<Node, Error> {}
+    fn block(&mut self) -> Result<Node, Error> {
+        let mut stmts = vec![];
+        let _l_brace = self.eat(TokenKind::LeftBrace, PEKind::ExpLParenFound)?;
 
+        let mut next = self.peek(PEKind::ExpLBraceFound)?;
+        if next.kind != TokenKind::RightBrace {
+            loop {
+                stmts.push(self.stmt()?);
+                next = self.peek(PEKind::ExpRBraceFound)?;
+                if next.kind == TokenKind::RightBrace {
+                    let _r_paren = self.toks.next();
+                    break;
+                }
+            }
+        }
+
+        Ok(Node::Block(stmts))
+    }
+
+    /// func | var | assignment
     fn stmt(&mut self) -> Result<Node, Error> {
-        if self
-            .toks
-            .next_if(|tok| tok.as_ref().is_ok_and(|x| x.kind == TokenKind::Let))
-            .is_some()
+        match self
+            .peek(|x| PEKind::ExpFound(vec![TokenKind::Fn, TokenKind::Let], x))?
+            .kind
         {
-            self.declaration()
-        } else {
-            self.assignment()
+            TokenKind::Let => self.declaration(),
+            TokenKind::Fn => self.fn_decl(),
+            _ => self.assignment(),
         }
     }
 
     /// Parse an assignment of a value to an ident
     fn assignment(&mut self) -> Result<Node, Error> {
-        let ident = self.ident(PEKind::ExpIdentFound)?;
+        let ident = self.ident()?;
         let _equal = self.eat(TokenKind::Equal, PEKind::ExpEqualFound)?;
         let expr = self.expression()?;
         let _semicolon = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
@@ -165,9 +181,10 @@ impl<'de> Parser<'de> {
         Ok(Node::Assignment(ident, expr))
     }
 
-    /// Parse a declaration, given that `let` has already been consumed
+    /// Parse a declaration
     fn declaration(&mut self) -> Result<Node, Error> {
-        let ident = self.ident(PEKind::ExpIdentFound)?;
+        let _let = self.toks.next();
+        let ident = BindIdent(self.ident()?);
 
         let branch =
             self.peek(|x| PEKind::ExpFound(vec![TokenKind::Semicolon, TokenKind::Equal], x))?;
@@ -210,21 +227,58 @@ impl<'de> Parser<'de> {
         let mut lhs = match next.kind {
             TokenKind::Number | TokenKind::Float => {
                 let val_tok = self.toks.next().unwrap().unwrap();
-                Expr::Value(Value {
+                Expr::Atom(Value {
                     kind: val_tok.val(),
                     span: self.source_map.span_from_tok(&val_tok),
                 })
             }
             TokenKind::Ident => {
-                let ident = self.toks.next().unwrap().unwrap();
+                let ident = FnIdent(self.ident()?);
+                let mut params = vec![];
+
                 let next = self.peek(PEKind::ExpSemicolonFound)?;
                 match next.kind {
                     TokenKind::LeftParen => {
-                        todo!("resolve the ident and find out how many fn args")
+                        let mut next = self.peek(PEKind::ExpExprFound)?;
+                        if next.kind != TokenKind::RightParen {
+                            loop {
+                                params.push(self.expression()?);
+
+                                let err = |x| {
+                                    PEKind::ExpFound(
+                                        vec![TokenKind::Comma, TokenKind::RightParen],
+                                        x,
+                                    )
+                                };
+                                next = self.peek(err)?;
+                                match next.kind {
+                                    TokenKind::RightParen => {
+                                        let _r_paren = self.toks.next();
+                                        break;
+                                    }
+                                    TokenKind::Comma => {
+                                        let _comma = self.toks.next();
+                                        continue;
+                                    }
+                                    _ => return Err(self.make_err(err)),
+                                };
+                            }
+                        }
+
+                        Expr::FnInvoc(
+                            ident,
+                            if params.is_empty() {
+                                None
+                            } else {
+                                Some(params)
+                            },
+                        )
                     }
-                    _ => (),
-                };
-                todo!()
+                    _ => {
+                        let ident = BindIdent(self.ident()?);
+                        Expr::Ident(ident)
+                    }
+                }
             }
             _ => {
                 return Err(self.make_err(PEKind::ExpOperandFound));
