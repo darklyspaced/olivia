@@ -90,6 +90,23 @@ impl<'de> Parser<'de> {
         }
     }
 
+    fn for_loop(&mut self) -> Result<Node, Error> {
+        let _for = self.toks.next();
+        let _l_paren = self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
+
+        let ty = TyIdent(self.ident()?);
+        let idx = BindIdent(self.ident()?);
+        let _equal = self.eat(TokenKind::Equal, |_| PEKind::IdxNotInitialised)?;
+        let value = self.expression()?;
+        let _semi = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
+
+        // START_POINT: need to figure out how to make this guaranteed to evaluate to a boolean
+        let predicate = self.expression()?;
+        let _semi = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
+
+        let assignment = self.assignment()?;
+    }
+
     fn fn_decl(&mut self) -> Result<Node, Error> {
         let _fn = self.toks.next();
         let ident = self.ident()?;
@@ -286,7 +303,7 @@ impl<'de> Parser<'de> {
         };
 
         while self.toks.peek().is_some() {
-            let tok = self.peek(PEKind::Unreachable)?; // lex errors annoying
+            let tok = self.peek(PEKind::Unreachable)?;
 
             let op_kind = match OpKind::try_from(tok.kind) {
                 Ok(op) => op,
@@ -317,7 +334,10 @@ impl<'de> Parser<'de> {
 
 fn infix_binding_power(op: &OpKind) -> (u8, u8) {
     match op {
-        OpKind::Add | OpKind::Sub => (1, 2),
-        OpKind::Mult | OpKind::Div => (3, 4),
+        OpKind::Or => (1, 2),
+        OpKind::And => (3, 4),
+        OpKind::Greater | OpKind::GreaterEqual | OpKind::Less | OpKind::LessEqual => (5, 6),
+        OpKind::Add | OpKind::Sub => (7, 8),
+        OpKind::Mult | OpKind::Div => (9, 10),
     }
 }

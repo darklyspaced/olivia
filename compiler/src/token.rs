@@ -48,6 +48,10 @@ pub enum TokenKind {
     Float,
     Let,
     Fn,
+    In,
+    DoublePipe,
+    DoubleAmpersand,
+    Ampersand,
 }
 
 impl TokenKind {

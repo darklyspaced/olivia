@@ -27,6 +27,7 @@ pub enum ParseErrorKind {
     ExpRBraceFound(String),
     ExpBlockFound(String),
     ExpFound(Vec<TokenKind>, String),
+    IdxNotInitialised,
     SolelyAssDecl,
     /// Places where an error kind is expected but it will never be produced
     Unreachable(String),
@@ -78,6 +79,7 @@ impl ParseErrorKind {
             ParseErrorKind::ExpLBraceFound(_) => String::from("expected `{`"),
             ParseErrorKind::ExpRBraceFound(_) => String::from("expected `}`"),
             ParseErrorKind::ExpBlockFound(_) => String::from("expected block"),
+            ParseErrorKind::IdxNotInitialised => String::from("must be initialised"),
         }
     }
 
@@ -128,6 +130,9 @@ impl ParseErrorKind {
             }
             ParseErrorKind::SolelyAssDecl => {
                 String::from("only assignment and declarations are supported as of now")
+            }
+            ParseErrorKind::IdxNotInitialised => {
+                String::from("loop index must be initialised, try adding a `=`")
             }
             ParseErrorKind::Unreachable(_) => unreachable!(),
         }

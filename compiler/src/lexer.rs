@@ -156,6 +156,13 @@ impl<'de> Iterator for Lexer<'de> {
                 '>' => token!(TokenKind::Greater, '=', TokenKind::GreaterEqual),
                 '<' => token!(TokenKind::Less, '=', TokenKind::LessEqual),
                 '-' => token!(TokenKind::Minus, '>', TokenKind::Arrow),
+                '&' => token!(TokenKind::Ampersand, '&', TokenKind::DoubleAmpersand),
+                '|' => match self.chars.peek() {
+                    Some('|') => {
+                        token!(TokenKind::DoublePipe)
+                    }
+                    _ => error!(LexErrorKind::UnexpectedCharacter),
+                },
                 '/' => match self.chars.peek() {
                     Some('/') => {
                         while self.chars.next_if_neq(&'\n').is_some() {}
@@ -187,6 +194,7 @@ impl<'de> Iterator for Lexer<'de> {
                         "for" => token!(TokenKind::For),
                         "let" => token!(TokenKind::Let),
                         "fn" => token!(TokenKind::Fn),
+                        "in" => token!(TokenKind::In),
                         _ => token!(TokenKind::Ident),
                     }
                 }

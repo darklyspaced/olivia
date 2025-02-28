@@ -15,6 +15,9 @@ pub enum Node {
         ret: Option<TyIdent>,
         block: Box<Node>,
     },
+    ForLoop {
+        predicate: 
+    },
     Assignment(Ident, Expr),
     Expr(Expr),
 }
@@ -54,6 +57,12 @@ pub enum OpKind {
     Mult,
     Div,
     Sub,
+    Greater,
+    Less,
+    GreaterEqual,
+    LessEqual,
+    Or,
+    And,
 }
 
 impl TryFrom<TokenKind> for OpKind {
@@ -65,6 +74,12 @@ impl TryFrom<TokenKind> for OpKind {
             TokenKind::Minus => Ok(OpKind::Sub),
             TokenKind::Star => Ok(OpKind::Mult),
             TokenKind::Slash => Ok(OpKind::Div),
+            TokenKind::Greater => Ok(OpKind::Greater),
+            TokenKind::Less => Ok(OpKind::Less),
+            TokenKind::LessEqual => Ok(OpKind::LessEqual),
+            TokenKind::GreaterEqual => Ok(OpKind::GreaterEqual),
+            TokenKind::DoubleAmpersand => Ok(OpKind::And),
+            TokenKind::DoublePipe => Ok(OpKind::Or),
             _ => Err(()),
         }
     }
@@ -75,7 +90,7 @@ impl Display for Expr {
         match self {
             Expr::BinOp(token_kind, er, e1) => write!(f, "({} {} {})", token_kind, er, e1),
             Expr::UnaryOp(token_kind, e) => write!(f, "({}{})", token_kind, e),
-            Expr::Atom(ty) => write!(f, "{:?}", ty), // TODO: fix this for debug
+            Expr::Atom(ty) => write!(f, "{:?}", ty),
             Expr::FnInvoc(ident, x) => write!(f, "{:?}({:?})", ident, x),
             Expr::Ident(ident) => write!(f, "{:?}", ident),
         }
@@ -89,6 +104,12 @@ impl Display for OpKind {
             OpKind::Mult => "*",
             OpKind::Div => "/",
             OpKind::Sub => "-",
+            OpKind::Greater => ">",
+            OpKind::Less => "<",
+            OpKind::GreaterEqual => ">=",
+            OpKind::LessEqual => "<=",
+            OpKind::Or => "||",
+            OpKind::And => "&&",
         })
     }
 }
