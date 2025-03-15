@@ -4,8 +4,8 @@ use crate::{error::span::Span, interner::Symbol, token::TokenKind, value::Value}
 
 #[derive(Debug)]
 /// The spans of higher level things are the sums of the spans of their components
-pub enum Node {
-    Block(Vec<Node>),
+pub enum Ast {
+    Block(Vec<Ast>),
     /// Identifier, then the expression being assigned to it
     Declaration(BindIdent, Option<Expr>),
     /// The name of the function, the parameters to the function, block, and return type
@@ -13,18 +13,18 @@ pub enum Node {
         ident: Ident,
         params: Vec<(TyIdent, BindIdent)>,
         ret: Option<TyIdent>,
-        block: Box<Node>,
+        block: Box<Ast>,
     },
     ForLoop {
-        decl: Box<Node>,
+        decl: Box<Ast>,
         predicate: Expr,
-        assignment: Box<Node>,
-        block: Box<Node>,
+        assignment: Box<Ast>,
+        block: Box<Ast>,
     },
     If {
         predicate: Expr,
-        then: Box<Node>,
-        r#else: Option<Box<Node>>, // this is `(Block || If)`
+        then: Box<Ast>,
+        r#else: Option<Box<Ast>>, // this is `(Block || If)`
     },
     Assignment(Ident, Expr),
     Expr(Expr),
