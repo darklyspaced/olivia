@@ -67,7 +67,7 @@ impl Parser<'_> {
             .next()
             .expect("shouldn't be EOF")
             .expect("should have been a valid token, not error");
-        let kind = make_kind(String::from(dbg!(&erroneous_tok).lexeme));
+        let kind = make_kind(String::from(erroneous_tok.lexeme));
         let context = Some(
             self.source_map
                 .ctxt_from_tok(&erroneous_tok)

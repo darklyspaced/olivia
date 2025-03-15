@@ -40,7 +40,7 @@ impl<'de> SourceMap {
             path: self.path.to_string_lossy().to_string(),
             line: String::from(line),
             num,
-            annotation_range: dbg!((rel_start, rel_end)),
+            annotation_range: (rel_start, rel_end),
             code_pos: None,
         }
     }

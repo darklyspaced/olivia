@@ -18,7 +18,7 @@ where
     E: Reportable,
 {
     /// The actual error
-    //pub inner: Box<E>,
+    pub inner: Box<E>,
     pub backtrace: Backtrace,
 }
 

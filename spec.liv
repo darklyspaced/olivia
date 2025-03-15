@@ -1,2 +1,5 @@
-let z = 100x
-let z = 100;
+if (x) {
+    let y = 100;
+} else if (y) {
+    let x = 100;
+}

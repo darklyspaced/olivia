@@ -16,7 +16,15 @@ pub enum Node {
         block: Box<Node>,
     },
     ForLoop {
-        predicate: 
+        decl: Box<Node>,
+        predicate: Expr,
+        assignment: Box<Node>,
+        block: Box<Node>,
+    },
+    If {
+        predicate: Expr,
+        then: Box<Node>,
+        r#else: Option<Box<Node>>, // this is `(Block || If)`
     },
     Assignment(Ident, Expr),
     Expr(Expr),

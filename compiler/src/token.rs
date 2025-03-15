@@ -48,7 +48,8 @@ pub enum TokenKind {
     Float,
     Let,
     Fn,
-    In,
+    If,
+    Else,
     DoublePipe,
     DoubleAmpersand,
     Ampersand,
@@ -81,6 +82,8 @@ impl TokenKind {
             TokenKind::For => "for",
             TokenKind::Let => "let",
             TokenKind::Fn => "fn",
+            TokenKind::If => "if",
+            TokenKind::Else => "else",
             tk => unimplemented!("no String repr of {}", tk),
         }
     }
