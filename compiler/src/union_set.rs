@@ -1,9 +1,6 @@
-use std::ops::{Index, IndexMut};
+use std::cell::Cell;
 
-use crate::{
-    ty::TyId,
-    type_ck::{TyVar, TyVarKind},
-};
+use crate::{ty::TyId, type_ck::TyVar};
 
 /// This is a data structure that contains many different disjoint sets that can be merged. This is
 /// important because we create a bunch of fresh variables as we make our way through type
@@ -24,71 +21,83 @@ pub struct DisjointSet {
 
 /// A node in the forest of a `DisjointSet`. It's rank approximates how deep the tree is so that
 /// when unifying sets we can prevent trees from getting too deep.
+///
+/// `Cell` is needed here because holding mutable references whilst trying to update paths and
+/// access grandparents simply isn't possible.
 pub struct Elem {
-    rank: usize,
-    ty_var: TyVar,
+    id: usize,
+    rank: Cell<usize>,
+    parent: Cell<usize>,
 }
 
 impl DisjointSet {
     pub fn fresh(&mut self) -> TyId {
-        let id = TyId(self.forest.len());
+        let id = self.forest.len();
         self.forest.push(Elem {
-            rank: 0,
-            ty_var: TyVar {
-                kind: TyVarKind::Var,
-                id,
-            },
+            rank: Cell::new(0),
+            parent: Cell::new(id),
+            id,
         });
-        id
+        TyId(id)
     }
 
-    fn get_parent(&self, elem: &Elem) -> usize {
-        self.parents[elem.ty_var.id.0]
+    fn get_node(&self, id: usize) -> &Elem {
+        &self.forest[id]
     }
 
-    pub fn find(&mut self, ty_var: TyVar) -> TyId {
-        let mut curr = &mut self[&ty_var];
-        while self.get_parent(curr) != curr.ty_var.id.0 {
-            curr
+    /// Returns `Some` if `elem` has a parent, else `None`
+    fn get_parent(&self, elem: &Elem) -> &Elem {
+        self.get_node(elem.parent.get())
+    }
+
+    /// Standard find algorithm that uses path splitting by replacing every pointer on this path to
+    /// a pointer to the node's grandparents. This ensures that
+    pub fn find(&self, ty_var: TyVar) -> &Elem {
+        let mut curr = self.get_node(ty_var.id.0);
+        let parent = self.get_parent(curr);
+
+        while curr.id != self.get_parent(curr).id {
+            let grandparent = self.get_parent(parent);
+            curr.set_parent(&grandparent);
+
+            curr = parent;
         }
 
-        todo!()
+        return curr;
     }
 
-    pub fn union(&mut self, x: Elem, y: Elem) {
-        let x = self.find(x.ty_var);
-        let y = self.find(y.ty_var);
+    /// Union algorithm that uses rank to make sure that the trees don't get too deep and
+    /// essentially just sets the parent of one tree to the other so that they both end up having
+    /// the same set representative.
+    pub fn union(&mut self, x: TyVar, y: TyVar) {
+        let mut x = self.find(x);
+        let mut y = self.find(y);
 
         if x != y {
-             if 
+            if x.rank < y.rank {
+                (x, y) = (y, x);
+            }
+
+            y.set_parent(x);
+            if x.rank == y.rank {
+                x.rank.set(x.rank.get() + 1);
+            }
         }
     }
 }
 
-impl Index<&TyVar> for DisjointSet {
-    type Output = Elem;
-
-    fn index(&self, index: &TyVar) -> &Self::Output {
-        self.forest.index(index.id.0)
+impl PartialEq for Elem {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
     }
 }
 
-impl IndexMut<&TyVar> for DisjointSet {
-    fn index_mut(&mut self, index: &TyVar) -> &mut Self::Output {
-        self.forest.index_mut(index.id.0)
+impl Elem {
+    pub fn get_id(&self) -> usize {
+        self.id
     }
-}
 
-impl Index<&TyId> for DisjointSet {
-    type Output = Elem;
-
-    fn index(&self, index: &TyId) -> &Self::Output {
-        self.forest.index(index.0)
-    }
-}
-
-impl IndexMut<&TyId> for DisjointSet {
-    fn index_mut(&mut self, index: &TyId) -> &mut Self::Output {
-        self.forest.index_mut(index.0)
+    pub fn set_parent(&self, new_parent: &Elem) {
+        self.parent.replace(new_parent.id);
     }
 }

@@ -15,8 +15,7 @@ struct TypedAst {
 
 impl TypedAst {
     fn fresh(&mut self) -> TyId {
-        self.disjoint_set.make_singleton(TyVar::Var(id));
-        id
+        self.disjoint_set.fresh()
     }
 
     /// Gives a concrete type `T` to the usage of a variable, specialising it from it's polymorphic
