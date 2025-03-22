@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use crate::{ty::TyId, type_ck::TyVar};
+use crate::{ty::TypeId, type_ck::TyVar};
 
 /// This is a data structure that contains many different disjoint sets that can be merged. This is
 /// important because we create a bunch of fresh variables as we make our way through type
@@ -12,6 +12,7 @@ use crate::{ty::TyId, type_ck::TyVar};
 /// pass.
 ///
 /// A type's `TyId` is its position in the array.
+#[derive(Default)]
 pub struct DisjointSet {
     /// The index in `forest` is one's `TyId`
     forest: Vec<Elem>,
@@ -31,7 +32,7 @@ pub struct Elem {
 }
 
 impl DisjointSet {
-    pub fn fresh(&mut self) -> TyId {
+    pub fn fresh(&self) -> TypeId {
         let id = self.forest.len();
         self.forest.push(Elem {
             rank: Cell::new(0),
@@ -39,15 +40,6 @@ impl DisjointSet {
             id,
         });
         TyId(id)
-    }
-
-    fn get_node(&self, id: usize) -> &Elem {
-        &self.forest[id]
-    }
-
-    /// Returns `Some` if `elem` has a parent, else `None`
-    fn get_parent(&self, elem: &Elem) -> &Elem {
-        self.get_node(elem.parent.get())
     }
 
     /// Standard find algorithm that uses path splitting by replacing every pointer on this path to
@@ -69,7 +61,7 @@ impl DisjointSet {
     /// Union algorithm that uses rank to make sure that the trees don't get too deep and
     /// essentially just sets the parent of one tree to the other so that they both end up having
     /// the same set representative.
-    pub fn union(&mut self, x: TyVar, y: TyVar) {
+    pub fn union(&self, x: TyVar, y: TyVar) {
         let mut x = self.find(x);
         let mut y = self.find(y);
 
@@ -83,6 +75,25 @@ impl DisjointSet {
                 x.rank.set(x.rank.get() + 1);
             }
         }
+    }
+
+    /// Return all free fresh type variables in the environment
+    pub fn free(&self) -> Vec<&Elem> {
+        self.forest
+            .iter()
+            .enumerate()
+            .filter(|(pos, x)| x.parent.get() == *pos)
+            .map(|(_, x)| x)
+            .collect::<Vec<_>>()
+    }
+
+    fn get_node(&self, id: usize) -> &Elem {
+        &self.forest[id]
+    }
+
+    /// Returns `Some` if `elem` has a parent, else `None`
+    fn get_parent(&self, elem: &Elem) -> &Elem {
+        self.get_node(elem.parent.get())
     }
 }
 

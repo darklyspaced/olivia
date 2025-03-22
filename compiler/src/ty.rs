@@ -1,8 +1,8 @@
 #[derive(Copy, Clone, PartialEq)]
-pub struct TyId(pub usize);
+pub struct TypeId(pub usize);
 
 pub enum Ty {
     Int,
     Float,
-    Composite(TyId),
+    Composite(TypeId),
 }

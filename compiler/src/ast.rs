@@ -1,11 +1,14 @@
-use std::fmt::{Debug, Display};
+use std::{
+    collections::VecDeque,
+    fmt::{Debug, Display},
+};
 
 use crate::{error::span::Span, interner::Symbol, token::TokenKind, value::Value};
 
 #[derive(Debug)]
 /// The spans of higher level things are the sums of the spans of their components
 pub enum Ast {
-    Block(Vec<Ast>),
+    Block(VecDeque<Ast>),
     /// Identifier, then the expression being assigned to it
     Declaration(BindIdent, Option<Expr>),
     /// The name of the function, the parameters to the function, block, and return type
@@ -24,7 +27,7 @@ pub enum Ast {
     If {
         predicate: Expr,
         then: Box<Ast>,
-        r#else: Option<Box<Ast>>, // this is `(Block || If)`
+        otherwise: Option<Box<Ast>>, // this is `(Block || If)`
     },
     Assignment(Ident, Expr),
     Expr(Expr),
@@ -37,6 +40,18 @@ pub enum Expr {
     FnInvoc(FnIdent, Option<Vec<Expr>>),
     Ident(BindIdent),
     Atom(Value),
+}
+
+impl Iterator for Ast {
+    /// Whether it is something that needs to be matched on or not
+    type Item = Option<Ast>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Ast::Block(vec) => Some(vec.pop_front()),
+            _ => Some(None),
+        }
+    }
 }
 
 #[derive(Debug)]

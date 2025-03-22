@@ -113,21 +113,21 @@ impl<'de> Parser<'de> {
                 Ok(Ast::If {
                     predicate,
                     then: Box::new(then),
-                    r#else: Some(Box::new(if_stmt)),
+                    otherwise: Some(Box::new(if_stmt)),
                 })
             } else {
                 let block = self.block()?;
                 Ok(Ast::If {
                     predicate,
                     then: Box::new(then),
-                    r#else: Some(Box::new(block)),
+                    otherwise: Some(Box::new(block)),
                 })
             }
         } else {
             Ok(Ast::If {
                 predicate,
                 then: Box::new(then),
-                r#else: None,
+                otherwise: None,
             })
         }
     }
