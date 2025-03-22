@@ -49,4 +49,8 @@ impl Env {
     pub fn descope(&mut self) {
         self.frame = self.stack[self.frame].parent
     }
+
+    pub fn record(&mut self, symbol: Symbol, ty: TypeId) {
+        self.stack[self.frame].data.insert(symbol, ty);
+    }
 }

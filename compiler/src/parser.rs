@@ -3,7 +3,7 @@ pub mod utils;
 use std::iter::Peekable;
 
 use crate::{
-    ast::{Ast, BindIdent, Expr, FnIdent, Op, OpKind, TyIdent},
+    ast::{Ast, BindIdent, Expr, FnIdent, Ident, Op, OpKind, TyIdent},
     error::{
         self,
         parse_err::{ParseError, ParseErrorKind as PEKind},
@@ -88,6 +88,39 @@ impl<'de> Parser<'de> {
             source_map,
             interner,
         }
+    }
+
+    fn fn_app(&mut self, ident: Ident) -> Result<Ast, Error> {
+        let _l_paren = self.toks.next();
+
+        let mut next =
+            self.peek(|x| PEKind::ExpFound(vec![TokenKind::Ident, TokenKind::RightParen], x))?;
+
+        let mut params = vec![];
+
+        if next.kind != TokenKind::RightParen {
+            loop {
+                let expr = self.expression()?;
+
+                params.push(expr);
+
+                let err = |x| PEKind::ExpFound(vec![TokenKind::Comma, TokenKind::RightParen], x);
+                next = self.peek(err)?;
+                match next.kind {
+                    TokenKind::RightParen => {
+                        let _r_paren = self.toks.next();
+                        break;
+                    }
+                    TokenKind::Comma => {
+                        let _comma = self.toks.next();
+                        continue;
+                    }
+                    _ => return Err(self.make_err(err)),
+                };
+            }
+        }
+
+        return Ok(Ast::Application { ident, params });
     }
 
     fn if_stmt(&mut self) -> Result<Ast, Error> {
@@ -225,7 +258,7 @@ impl<'de> Parser<'de> {
             }
         }
 
-        Ok(Ast::Block(stmts))
+        Ok(Ast::Block(stmts.into()))
     }
 
     /// func | var | assignment | for | if

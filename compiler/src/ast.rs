@@ -29,6 +29,10 @@ pub enum Ast {
         then: Box<Ast>,
         otherwise: Option<Box<Ast>>, // this is `(Block || If)`
     },
+    Application {
+        ident: Ident,
+        params: Vec<Expr>,
+    },
     Assignment(Ident, Expr),
     Expr(Expr),
 }

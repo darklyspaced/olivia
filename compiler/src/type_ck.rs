@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use crate::{ast::Ast, disjoint_set::DisjointSet, env::Env, ty::TypeId};
 
 struct TypedAst {
@@ -17,17 +19,21 @@ impl TypedAst {
     }
 
     /// Type checks and annotates a specific Ast with types, returning any conflicts discovered
-    pub fn type_ck(&mut self) {
-        match self.ast.next() {
-            Some(Some(ast)) => match ast {
-                Ast::Declaration(ident, expr) => match expr {
-                    Some(expr) => todo!(),
-                    None => {
-                        let ty = self.fresh();
-                    }
-                },
-                Ast::Block(_) => unreachable!(),
+    pub fn type_ck(&mut self) {}
+
+    pub fn infer(&mut self, ast: Ast) -> TypeId {
+        match ast {
+            Ast::Declaration(ident, expr) => match expr {
+                Some(expr) => self.infer(Ast::Expr(expr)),
+                None => {
+                    let ty = self.fresh();
+                    self.env.record(ident.0.name, ty);
+                    return ty;
+                }
             },
+            Ast::Expr(expr) => expr.type_id(),
+            Ast::Block(_) => unreachable!(),
+            _ => todo!(),
         }
     }
 

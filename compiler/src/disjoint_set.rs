@@ -32,14 +32,14 @@ pub struct Elem {
 }
 
 impl DisjointSet {
-    pub fn fresh(&self) -> TypeId {
+    pub fn fresh(&mut self) -> TypeId {
         let id = self.forest.len();
         self.forest.push(Elem {
             rank: Cell::new(0),
             parent: Cell::new(id),
             id,
         });
-        TyId(id)
+        TypeId(id)
     }
 
     /// Standard find algorithm that uses path splitting by replacing every pointer on this path to

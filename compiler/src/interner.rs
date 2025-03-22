@@ -2,7 +2,7 @@ use std::{collections::HashMap, mem};
 
 /// An id that points to a interned `String`. Ideally within the compiler itself there should be
 /// very few free floating `Strings` and should be `Idx`s instead for efficiency.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Symbol(u32);
 
 /// This interner primarily employs two strategies to be efficient. The first is that all strings
