@@ -1,25 +1,65 @@
-use std::any::Any;
+use strum::IntoEnumIterator;
 
-use crate::{ast::Ast, disjoint_set::DisjointSet, env::Env, ty::TypeId};
+use crate::{
+    ast::{Ast, Expr, OpKind}, disjoint_set::DisjointSet, env::Env, error::source_map::SourceMap, interner::Interner, ty::{PrimTy, Ty, TyConst, TypeId}
+};
 
-struct TypedAst {
+struct TypedAst<'de> {
     ast: Ast,
+    /// The environment for the current scope
     env: Env,
     /// Keeps track of all the types and binds them as types are inferred
     disjoint_set: DisjointSet,
+    interner: &'de mut Interner,
+    source_map: &'de SourceMap,
 }
 
-impl TypedAst {
-    pub fn new(ast: Ast) -> Self {
+impl<'de> TypedAst<'de> {
+    pub fn new(ast: Ast, interner: &'de mut Interner, source_map: &'de SourceMap) -> Self {
+
+
         TypedAst {
             ast,
             env: Env::new(),
+            interner,
+            source_map,
             disjoint_set: DisjointSet::default(),
         }
     }
 
+    /// Create all the type constructors that should already exist for
+    /// 1. Predefined operators (+, &&, <, etc.)
+    /// 2. Primitive types (Int, Bool, etc)
+    fn init_tyconsts(&mut self) {
+        // TODO: finish this function and make it so that they can be accessed from anywhere. This
+        // may entail adding a 'prelude/global' environment that defines all these types. Probably
+        // prelude since it isn't really an environment and we want types to be available file
+        // wide
+        for elem in PrimTy::iter() {
+            let sym = self.interner.intern(&elem.to_string());
+            let id = self.disjoint_set.fresh();
+
+        }
+
+
+        for elem in OpKind::iter() {
+            let sym = self.interner.intern(&elem.to_string());
+            if matches!(elem, OpKind::And | OpKind::Or) {
+                let id = self.disjoint_set.fresh();
+                Ty::Const {
+                    name: sym,
+                    id,
+                    params: vec![Ty::Var { name: (), id: () }]
+                }
+            } else {
+            }
+
+        }
+    }
+
     /// Type checks and annotates a specific Ast with types, returning any conflicts discovered
-    pub fn type_ck(&mut self) {}
+    pub fn type_ck(&mut self) {
+    }
 
     pub fn infer(&mut self, ast: Ast) -> TypeId {
         match ast {
@@ -31,7 +71,14 @@ impl TypedAst {
                     return ty;
                 }
             },
-            Ast::Expr(expr) => expr.type_id(),
+            Ast::Expr(expr) => match expr {
+                Expr::BinOp(op, expr, expr1) => ,
+                Expr::UnaryOp(op, expr) => todo!(),
+                Expr::FnInvoc(fn_ident, vec) => todo!(),
+                Expr::Ident(bind_ident) => todo!(),
+                Expr::Atom(value) => todo!(),
+            },
+            Ast::Application { ident, params } => {}
             Ast::Block(_) => unreachable!(),
             _ => todo!(),
         }

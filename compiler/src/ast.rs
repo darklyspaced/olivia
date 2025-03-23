@@ -3,6 +3,8 @@ use std::{
     fmt::{Debug, Display},
 };
 
+use strum::EnumIter;
+
 use crate::{error::span::Span, interner::Symbol, token::TokenKind, value::Value};
 
 #[derive(Debug)]
@@ -78,7 +80,7 @@ pub struct Op {
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, strum::Display, EnumIter)]
 pub enum OpKind {
     Add,
     Mult,
@@ -124,22 +126,22 @@ impl Display for Expr {
     }
 }
 
-impl Display for OpKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            OpKind::Add => "+",
-            OpKind::Mult => "*",
-            OpKind::Div => "/",
-            OpKind::Sub => "-",
-            OpKind::Greater => ">",
-            OpKind::Less => "<",
-            OpKind::GreaterEqual => ">=",
-            OpKind::LessEqual => "<=",
-            OpKind::Or => "||",
-            OpKind::And => "&&",
-        })
-    }
-}
+//impl Display for OpKind {
+//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//        write!(f, "{}", match self {
+//            OpKind::Add => "+",
+//            OpKind::Mult => "*",
+//            OpKind::Div => "/",
+//            OpKind::Sub => "-",
+//            OpKind::Greater => ">",
+//            OpKind::Less => "<",
+//            OpKind::GreaterEqual => ">=",
+//            OpKind::LessEqual => "<=",
+//            OpKind::Or => "||",
+//            OpKind::And => "&&",
+//        })
+//    }
+//}
 
 impl Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

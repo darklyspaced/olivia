@@ -6,7 +6,7 @@ use std::{collections::HashMap, mem};
 pub struct Symbol(u32);
 
 /// This interner primarily employs two strategies to be efficient. The first is that all strings
-/// are concatenated and then adding strings just pumps the pointer to the buffer. However, we need
+/// are concatenated and then adding strings just increments the pointer to the buffer. However, we need
 /// address stability so when we need a new buffer, we allocate a new one but DON'T copy the old
 /// one.
 ///

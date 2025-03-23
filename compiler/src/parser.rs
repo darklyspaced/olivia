@@ -82,6 +82,8 @@ pub struct Parser<'de> {
 
 impl<'de> Parser<'de> {
     pub fn new(iter: Lexer<'de>, source_map: &'de SourceMap, interner: &'de mut Interner) -> Self {
+        // TODO: initialise all the types for OpKind here (with interner) so that they can be used
+        // by the type checker
         Self {
             state: State::Parse,
             toks: iter.peekable(),
