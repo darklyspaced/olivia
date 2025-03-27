@@ -8,12 +8,15 @@ use crate::{interner::Symbol, ty::TypeId};
 /// traverses the stack.
 #[derive(Default)]
 pub struct Env {
+    /// Prelude of all the defined types (mostly for type checking purposes)
+    prelude: Scope,
     /// Ptr to the top of the active frame
     frame: usize,
     /// The entire parent pointer tree
     stack: Vec<Scope>,
 }
 
+#[derive(Default)]
 struct Scope {
     data: HashMap<Symbol, TypeId>,
     parent: usize,
@@ -30,14 +33,7 @@ impl Scope {
 
 impl Env {
     pub fn new() -> Self {
-        let node = Scope {
-            data: HashMap::new(),
-            parent: 0,
-        };
-        Self {
-            frame: 0,
-            stack: vec![node],
-        }
+        Self::default()
     }
 
     pub fn enscope(&mut self) {
@@ -52,5 +48,16 @@ impl Env {
 
     pub fn record(&mut self, symbol: Symbol, ty: TypeId) {
         self.stack[self.frame].data.insert(symbol, ty);
+    }
+
+    pub fn rec_prelude(&mut self, symbol: Symbol, ty: TypeId) {
+        self.prelude.data.insert(symbol, ty);
+    }
+
+    pub fn get(&self, symbol: &Symbol) -> Option<&TypeId> {
+        match self.prelude.data.get(symbol) {
+            None => self.stack[self.frame].data.get(symbol),
+            x => x,
+        }
     }
 }

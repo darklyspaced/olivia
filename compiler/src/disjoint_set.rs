@@ -1,6 +1,10 @@
 use std::cell::Cell;
 
-use crate::{ty::TypeId, type_ck::TyVar};
+use crate::{
+    interner::Symbol,
+    ty::{Ty, TypeId},
+    type_ck::TyVar,
+};
 
 /// This is a data structure that contains many different disjoint sets that can be merged. This is
 /// important because we create a bunch of fresh variables as we make our way through type
@@ -26,16 +30,18 @@ pub struct DisjointSet {
 /// `Cell` is needed here because holding mutable references whilst trying to update paths and
 /// access grandparents simply isn't possible.
 pub struct Elem {
-    id: usize,
+    pub id: usize,
+    data: Ty,
     rank: Cell<usize>,
     parent: Cell<usize>,
 }
 
 impl DisjointSet {
-    pub fn fresh(&mut self) -> TypeId {
+    pub fn fresh(&mut self, name: Symbol) -> TypeId {
         let id = self.forest.len();
         self.forest.push(Elem {
             rank: Cell::new(0),
+            data: Ty::Var(TyVar { name, id }),
             parent: Cell::new(id),
             id,
         });
@@ -44,8 +50,8 @@ impl DisjointSet {
 
     /// Standard find algorithm that uses path splitting by replacing every pointer on this path to
     /// a pointer to the node's grandparents. This ensures that
-    pub fn find(&self, ty_var: TyVar) -> &Elem {
-        let mut curr = self.get_node(ty_var.id.0);
+    pub fn find(&self, id: TypeId) -> &Elem {
+        let mut curr = self.get_node(id.0);
         let parent = self.get_parent(curr);
 
         while curr.id != self.get_parent(curr).id {
@@ -61,7 +67,7 @@ impl DisjointSet {
     /// Union algorithm that uses rank to make sure that the trees don't get too deep and
     /// essentially just sets the parent of one tree to the other so that they both end up having
     /// the same set representative.
-    pub fn union(&self, x: TyVar, y: TyVar) {
+    pub fn union(&self, x: TypeId, y: TypeId) {
         let mut x = self.find(x);
         let mut y = self.find(y);
 
@@ -95,6 +101,10 @@ impl DisjointSet {
     fn get_parent(&self, elem: &Elem) -> &Elem {
         self.get_node(elem.parent.get())
     }
+
+    fn get_len(&self) -> usize {
+        self.forest.len()
+    }
 }
 
 impl PartialEq for Elem {
@@ -104,10 +114,6 @@ impl PartialEq for Elem {
 }
 
 impl Elem {
-    pub fn get_id(&self) -> usize {
-        self.id
-    }
-
     pub fn set_parent(&self, new_parent: &Elem) {
         self.parent.replace(new_parent.id);
     }
