@@ -53,6 +53,7 @@ pub enum TokenKind {
     DoublePipe,
     DoubleAmpersand,
     Ampersand,
+    Colon,
 }
 
 impl TokenKind {

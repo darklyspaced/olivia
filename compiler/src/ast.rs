@@ -16,7 +16,7 @@ pub enum Ast {
     /// The name of the function, the parameters to the function, block, and return type
     FunDeclaration {
         ident: Ident,
-        params: Vec<(TyIdent, BindIdent)>,
+        params: Vec<(BindIdent, Option<TyIdent>)>,
         ret: Option<TyIdent>,
         block: Box<Ast>,
     },
@@ -88,6 +88,7 @@ pub enum OpKind {
     Sub,
     Greater,
     Less,
+    Equal,
     GreaterEqual,
     LessEqual,
     Or,
@@ -105,6 +106,7 @@ impl TryFrom<TokenKind> for OpKind {
             TokenKind::Slash => Ok(OpKind::Div),
             TokenKind::Greater => Ok(OpKind::Greater),
             TokenKind::Less => Ok(OpKind::Less),
+            TokenKind::EqualEqual => Ok(OpKind::Equal),
             TokenKind::LessEqual => Ok(OpKind::LessEqual),
             TokenKind::GreaterEqual => Ok(OpKind::GreaterEqual),
             TokenKind::DoubleAmpersand => Ok(OpKind::And),
@@ -125,23 +127,6 @@ impl Display for Expr {
         }
     }
 }
-
-//impl Display for OpKind {
-//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//        write!(f, "{}", match self {
-//            OpKind::Add => "+",
-//            OpKind::Mult => "*",
-//            OpKind::Div => "/",
-//            OpKind::Sub => "-",
-//            OpKind::Greater => ">",
-//            OpKind::Less => "<",
-//            OpKind::GreaterEqual => ">=",
-//            OpKind::LessEqual => "<=",
-//            OpKind::Or => "||",
-//            OpKind::And => "&&",
-//        })
-//    }
-//}
 
 impl Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -17,16 +17,22 @@ struct TypedAst<'de> {
     disjoint_set: DisjointSet,
     interner: &'de mut Interner,
     source_map: &'de SourceMap,
+    constraints: Vec<Constraint>,
+}
+
+enum Constraint {
+    Eq(Ty, Ty),
 }
 
 impl<'de> TypedAst<'de> {
     pub fn new(ast: Ast, interner: &'de mut Interner, source_map: &'de SourceMap) -> Self {
         TypedAst {
             ast,
-            env: Env::new(),
             interner,
             source_map,
+            env: Env::new(),
             disjoint_set: DisjointSet::default(),
+            constraints: Vec::new(),
         }
     }
 
@@ -61,39 +67,65 @@ impl<'de> TypedAst<'de> {
             let func = match elem {
                 OpKind::And | OpKind::Or => {
                     let bool = self.get_tyvar(PTy::Bool);
-                    TyConstr {
+                    vec![TyConstr {
                         name: sym,
                         params: vec![Ty::Var(bool), Ty::Var(bool), Ty::Var(bool)],
-                    }
+                    }]
                 }
                 OpKind::Greater | OpKind::GreaterEqual | OpKind::Less | OpKind::LessEqual => {
                     let (int, bool) = (self.get_tyvar(PTy::Int), self.get_tyvar(PTy::Bool));
-                    TyConstr {
+                    vec![TyConstr {
                         name: sym,
                         params: vec![Ty::Var(int), Ty::Var(int), Ty::Var(bool)],
-                    }
+                    }]
                 }
                 OpKind::Add | OpKind::Mult | OpKind::Sub | OpKind::Div => {
                     let int = self.get_tyvar(PTy::Int);
-                    TyConstr {
+                    vec![TyConstr {
                         name: sym,
                         params: vec![Ty::Var(int), Ty::Var(int), Ty::Var(int)],
+                    }]
+                }
+                OpKind::Equal => {
+                    let mut constrs = vec![];
+                    for pty in PTy::iter() {
+                        let ty = self.get_tyvar(PTy::Int);
+                        let sym = self.interner.intern(&format!(
+                            "{}{}",
+                            &elem.to_string(),
+                            &pty.to_string(),
+                        ));
+
+                        let constr = TyConstr {
+                            name: sym,
+                            params: vec![Ty::Var(ty), Ty::Var(ty), Ty::Var(ty)],
+                        };
+                        constrs.push(constr);
                     }
+                    constrs
                 }
             };
 
-            let id = self.disjoint_set.new_ty(Ty::Constr(func));
-            self.env.rec_prelude(sym, id);
+            for x in func {
+                let id = self.disjoint_set.new_ty(Ty::Constr(x));
+                self.env.rec_prelude(sym, id);
+            }
         }
     }
 
-    /// Type checks and annotates a specific Ast with types, returning any conflicts discovered
+    /// Type checks and annotates a specific Ast with types, returning any conflicts discovered. It
+    /// takes in an expected type to improve errors message and so forth. This ends up being a
+    /// variation of constraint solving based Hindley-Milner that is bidirectional
     pub fn type_ck(&mut self) {}
 
-    pub fn infer(&mut self, ast: Ast) -> TypeId {
+    pub fn infer(&mut self, ast: Ast, expected: Ty) -> TypeId {
         match ast {
             Ast::Declaration(ident, expr) => match expr {
-                Some(expr) => self.infer(Ast::Expr(expr)),
+                Some(expr) => {
+                    let ty = self.infer(Ast::Expr(expr), expected);
+                    self.env.record(ident.0.name, ty);
+                    return ty;
+                }
                 None => {
                     let ty = self.fresh();
                     self.env.record(ident.0.name, ty);
@@ -101,13 +133,21 @@ impl<'de> TypedAst<'de> {
                 }
             },
             Ast::Expr(expr) => match expr {
-                Expr::BinOp(op, expr, expr1) => todo!(),
-                Expr::UnaryOp(op, expr) => todo!(),
-                Expr::FnInvoc(fn_ident, vec) => todo!(),
-                Expr::Ident(bind_ident) => todo!(),
-                Expr::Atom(value) => todo!(),
+                Expr::BinOp(op, expr, expr1) => {
+                    // let sym = self.interner.intern(&op.to_string());
+                    // let app_ty = self.env.get(&sym);
+                    // let (t1, t2) = (self.infer(Ast::Expr(*expr)), self.infer(Ast::Expr(*expr1)));
+                    // let ret = self.fresh();
+                    todo!()
+                }
+                Expr::Ident(var) => {
+                    let ty = self.env.get(&var.0.name).unwrap();
+                    self.constraints
+                        .push(Constraint::Eq(Ty::Var(TyVar(var.0.name)), expected));
+                    todo!()
+                }
+                _ => todo!(),
             },
-            Ast::Application { ident, params } => todo!(),
             Ast::Block(_) => unreachable!(),
             _ => todo!(),
         }

@@ -1,5 +1,3 @@
-#![feature(hash_raw_entry)]
-
 pub mod ast;
 pub mod disjoint_set;
 pub mod env;

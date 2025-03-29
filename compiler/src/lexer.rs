@@ -151,6 +151,7 @@ impl<'de> Iterator for Lexer<'de> {
                 ',' => token!(TokenKind::Comma),
                 '+' => token!(TokenKind::Plus),
                 '*' => token!(TokenKind::Star),
+                ':' => token!(TokenKind::Colon),
                 '=' => token!(TokenKind::Equal, '=', TokenKind::EqualEqual),
                 '!' => token!(TokenKind::Bang, '=', TokenKind::BangEqual),
                 '>' => token!(TokenKind::Greater, '=', TokenKind::GreaterEqual),

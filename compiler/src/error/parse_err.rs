@@ -109,7 +109,7 @@ impl ParseErrorKind {
                 format!("found `{x}` where `(` was expected")
             }
             ParseErrorKind::ExpRParenFound(x) => {
-                format!("found `{x}` where `(` was expected")
+                format!("found `{x}` where `)` was expected")
             }
             ParseErrorKind::ExpLBraceFound(x) => {
                 format!("found `{x}` where `{{` was expected")

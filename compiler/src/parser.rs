@@ -122,7 +122,7 @@ impl<'de> Parser<'de> {
             }
         }
 
-        return Ok(Ast::Application { ident, params });
+        Ok(Ast::Application { ident, params })
     }
 
     fn if_stmt(&mut self) -> Result<Ast, Error> {
@@ -205,13 +205,20 @@ impl<'de> Parser<'de> {
             self.peek(|x| PEKind::ExpFound(vec![TokenKind::Ident, TokenKind::RightParen], x))?;
         if next.kind != TokenKind::RightParen {
             loop {
-                let ty = TyIdent(self.ident()?);
                 let binding = BindIdent(self.ident()?);
 
-                params.push((ty, binding));
-
                 let err = |x| PEKind::ExpFound(vec![TokenKind::Comma, TokenKind::RightParen], x);
-                next = self.peek(err)?;
+                let colon = self.peek(err)?;
+                if colon.kind == TokenKind::Colon {
+                    let _colon = self.toks.next();
+                    let ty = TyIdent(self.ident()?);
+                    params.push((binding, Some(ty)));
+                    next = self.peek(err)?;
+                } else {
+                    params.push((binding, None));
+                    next = colon
+                }
+
                 match next.kind {
                     TokenKind::RightParen => {
                         let _r_paren = self.toks.next();
@@ -423,7 +430,7 @@ fn infix_binding_power(op: &OpKind) -> (u8, u8) {
     match op {
         OpKind::Or => (1, 2),
         OpKind::And => (3, 4),
-        OpKind::Greater | OpKind::GreaterEqual | OpKind::Less | OpKind::LessEqual => (5, 6),
+        OpKind::Greater | OpKind::GeEq | OpKind::Less | OpKind::LeEq => (5, 6),
         OpKind::Add | OpKind::Sub => (7, 8),
         OpKind::Mult | OpKind::Div => (9, 10),
     }
