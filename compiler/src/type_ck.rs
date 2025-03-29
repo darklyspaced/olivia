@@ -30,13 +30,18 @@ impl<'de> TypedAst<'de> {
         }
     }
 
+    /// Get's the primitive `TyVar`
     fn get_tyvar(&mut self, prim_type: PTy) -> TyVar {
         let sym = self.interner.intern(&prim_type.to_string());
-        let ty_id = self.env.get(&sym).unwrap();
-        TyVar {
-            name: sym,
-            id: *ty_id,
-        }
+        TyVar(sym)
+    }
+
+    /// Initialises a fresh type variable and gives it a generated symbol
+    fn fresh(&mut self) -> TypeId {
+        let constr_sym = self
+            .interner
+            .intern(&format!("$#{}", self.disjoint_set.get_len()));
+        self.disjoint_set.fresh(constr_sym)
     }
 
     /// Create all the type constructors that should already exist for
@@ -44,18 +49,12 @@ impl<'de> TypedAst<'de> {
     /// 2. Primitive types (Int, Bool, etc)
     /// and add them to the prelude.
     fn init_tyconsts(&mut self) {
-        // TODO: finish this function and make it so that they can be accessed from anywhere. This
-        // may entail adding a 'prelude/global' environment that defines all these types. Probably
-        // prelude since it isn't really an environment and we want types to be available file
-        // wide
         for elem in PTy::iter() {
             let sym = self.interner.intern(&elem.to_string());
-            let id = self.disjoint_set.fresh();
+            let id = self.fresh();
             self.env.rec_prelude(sym, id);
         }
 
-        // TODO: use the `get_len()` method to generate sequential identifiers (symbols) using the
-        // pattern `$#{len}` for each of the identifiers
         for elem in OpKind::iter() {
             let sym = self.interner.intern(&elem.to_string());
 
@@ -64,29 +63,27 @@ impl<'de> TypedAst<'de> {
                     let bool = self.get_tyvar(PTy::Bool);
                     TyConstr {
                         name: sym,
-                        id: self.disjoint_set.fresh(),
-                        params: vec![bool, bool, bool],
+                        params: vec![Ty::Var(bool), Ty::Var(bool), Ty::Var(bool)],
                     }
                 }
                 OpKind::Greater | OpKind::GreaterEqual | OpKind::Less | OpKind::LessEqual => {
                     let (int, bool) = (self.get_tyvar(PTy::Int), self.get_tyvar(PTy::Bool));
                     TyConstr {
                         name: sym,
-                        id: self.disjoint_set.fresh(),
-                        params: vec![int, int, bool],
+                        params: vec![Ty::Var(int), Ty::Var(int), Ty::Var(bool)],
                     }
                 }
                 OpKind::Add | OpKind::Mult | OpKind::Sub | OpKind::Div => {
                     let int = self.get_tyvar(PTy::Int);
                     TyConstr {
                         name: sym,
-                        id: self.disjoint_set.fresh(),
-                        params: vec![int, int, int],
+                        params: vec![Ty::Var(int), Ty::Var(int), Ty::Var(int)],
                     }
                 }
             };
 
-            self.env.rec_prelude(sym, Ty::Constr(func));
+            let id = self.disjoint_set.new_ty(Ty::Constr(func));
+            self.env.rec_prelude(sym, id);
         }
     }
 
@@ -116,11 +113,6 @@ impl<'de> TypedAst<'de> {
         }
     }
 
-    /// Generates a new type variable
-    fn fresh(&mut self) -> TypeId {
-        self.disjoint_set.fresh()
-    }
-
     /// Gives a concrete fresh type `T` to the usage of a variable, specialising it from it's polymorphic
     /// type (which it implicitly already has) down to something that can be unified. It's
     /// polymorphic type is it's 'assumed' type that all let bindings have (in formal logic). In
@@ -135,5 +127,29 @@ impl<'de> TypedAst<'de> {
     /// Attempts to unify the type (e -> t) with (x).
     fn application() {}
 
-    fn unify() {}
+    /// Pattern matches on the two possible input types based on the following scenarios
+    fn unify(&self, t1: &Ty, t2: &Ty) {
+        match (t1, t2) {
+            (Ty::Constr(t1), Ty::Constr(t2))
+                if t1.name == t2.name && t1.params.len() == t2.params.len() =>
+            {
+                // conduct a pointwise unification of all the parameters because they should be of
+                // the same type
+                for (ta, tb) in t1.params.iter().zip(t2.params.iter()) {
+                    self.unify(&ta, &tb);
+                }
+            }
+            (Ty::Var(v1), Ty::Var(v2)) if v1 == v2 => return,
+            (Ty::Var(v), other) | (other, Ty::Var(v)) => {
+                let itself = self.env.get(&v.0).unwrap();
+                let representative = self.disjoint_set.find(*itself);
+                if representative.id != itself.0 {
+                    // unify the representative with the other one, making a substiution
+                    self.unify(&representative.ty, &other);
+                } else {
+                }
+            }
+            (_, _) => panic!("failed to unify the two types"),
+        };
+    }
 }

@@ -10,16 +10,12 @@ pub enum Ty {
 
 /// A type constructor with paramaters to fill out
 pub struct TyConstr {
-    pub name: Symbol, // Figure out a way to intern this so it can be a `Symbol`
-    pub id: TypeId,
-    pub params: Vec<TyVar>,
+    pub name: Symbol,
+    pub params: Vec<Ty>,
 }
 
-#[derive(Copy, Clone)]
-pub struct TyVar {
-    pub name: Symbol,
-    pub id: TypeId,
-}
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct TyVar(pub Symbol);
 
 #[derive(strum::Display, strum::EnumIter)]
 pub enum PTy {

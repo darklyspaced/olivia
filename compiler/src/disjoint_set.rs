@@ -2,8 +2,7 @@ use std::cell::Cell;
 
 use crate::{
     interner::Symbol,
-    ty::{Ty, TypeId},
-    type_ck::TyVar,
+    ty::{Ty, TyVar, TypeId},
 };
 
 /// This is a data structure that contains many different disjoint sets that can be merged. This is
@@ -31,7 +30,7 @@ pub struct DisjointSet {
 /// access grandparents simply isn't possible.
 pub struct Elem {
     pub id: usize,
-    data: Ty,
+    pub ty: Ty,
     rank: Cell<usize>,
     parent: Cell<usize>,
 }
@@ -41,7 +40,19 @@ impl DisjointSet {
         let id = self.forest.len();
         self.forest.push(Elem {
             rank: Cell::new(0),
-            data: Ty::Var(TyVar { name, id }),
+            ty: Ty::Var(TyVar(name)),
+            parent: Cell::new(id),
+            id,
+        });
+        TypeId(id)
+    }
+
+    /// Adds a new type that is known with the given name
+    pub fn new_ty(&mut self, ty: Ty) -> TypeId {
+        let id = self.forest.len();
+        self.forest.push(Elem {
+            rank: Cell::new(0),
+            ty,
             parent: Cell::new(id),
             id,
         });
@@ -93,6 +104,10 @@ impl DisjointSet {
             .collect::<Vec<_>>()
     }
 
+    pub fn transform(&mut self, id: TypeId, ty: Ty) {
+        self.forest[id.0].ty = ty;
+    }
+
     fn get_node(&self, id: usize) -> &Elem {
         &self.forest[id]
     }
@@ -102,7 +117,7 @@ impl DisjointSet {
         self.get_node(elem.parent.get())
     }
 
-    fn get_len(&self) -> usize {
+    pub fn get_len(&self) -> usize {
         self.forest.len()
     }
 }
