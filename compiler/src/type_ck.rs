@@ -2,10 +2,10 @@ use strum::IntoEnumIterator;
 
 use crate::{
     ast::{Ast, Expr, OpKind},
-    disjoint_set::DisjointSet,
+    disjoint_set::{DisjointSet, Elem},
     env::Env,
     error::source_map::SourceMap,
-    interner::Interner,
+    interner::{Interner, Symbol},
     ty::{PTy, Ty, TyConstr, TyVar, TypeId},
 };
 
@@ -127,29 +127,76 @@ impl<'de> TypedAst<'de> {
     /// Attempts to unify the type (e -> t) with (x).
     fn application() {}
 
-    /// Pattern matches on the two possible input types based on the following scenarios
+    /// Returns the representative of a `Symbol` in the current `Env`
+    fn get_representative(&self, sym: Symbol) -> &Elem {
+        let itself = self.env.get(&sym).unwrap();
+        self.disjoint_set.find(*itself)
+    }
+
+    /// Pattern matches on the two possible input types based on the following scenarios and
+    /// unifies them accordingly
     fn unify(&self, t1: &Ty, t2: &Ty) {
         match (t1, t2) {
             (Ty::Constr(t1), Ty::Constr(t2))
                 if t1.name == t2.name && t1.params.len() == t2.params.len() =>
             {
                 // conduct a pointwise unification of all the parameters because they should be of
-                // the same type
+                // the same type since they are the same function and have the same params
                 for (ta, tb) in t1.params.iter().zip(t2.params.iter()) {
                     self.unify(&ta, &tb);
                 }
             }
+
             (Ty::Var(v1), Ty::Var(v2)) if v1 == v2 => return,
-            (Ty::Var(v), other) | (other, Ty::Var(v)) => {
-                let itself = self.env.get(&v.0).unwrap();
-                let representative = self.disjoint_set.find(*itself);
-                if representative.id != itself.0 {
-                    // unify the representative with the other one, making a substiution
-                    self.unify(&representative.ty, &other);
-                } else {
+
+            (Ty::Var(v), _) if self.is_bound(v.0) => {
+                // v is bound so make a substitution for it and try again
+                let representative = self.get_representative(v.0);
+                self.unify(&representative.ty, t2);
+            }
+
+            (_, Ty::Var(v)) if self.is_bound(v.0) => {
+                // the left one is it's own representative / is not bound so try the right one now
+                let representative = self.get_representative(v.0);
+                self.unify(t1, &representative.ty);
+            }
+
+            // the type variables are unbound here
+            (Ty::Var(TyVar(sym)), other) | (other, Ty::Var(TyVar(sym))) => {
+                if !self.occurs_in(*sym, other) {
+                    let id = self.env.get(sym).unwrap();
+                    let o_sym = match other {
+                        Ty::Var(ty_var) => ty_var.0,
+                        Ty::Constr(ty_constr) => ty_constr.name,
+                    };
+
+                    self.disjoint_set.union(*id, *self.env.get(&o_sym).unwrap());
                 }
             }
+
             (_, _) => panic!("failed to unify the two types"),
         };
+    }
+
+    /// Returns whether the type associated with this `Symbol` is bound (has a representative other
+    /// than itself) or not
+    fn is_bound(&self, id: Symbol) -> bool {
+        let itself = self.env.get(&id).unwrap();
+        let representative = self.disjoint_set.find(*itself);
+        representative.id != itself.0
+    }
+
+    /// Checks is `id` occurs in `ty` to prevent a recursion when binding `id` to `ty`. It achieves
+    /// this by recursively checking the type by looking at it's representative if it has one or
+    /// it's componenets if it's a constructor
+    fn occurs_in(&self, id: Symbol, ty: &Ty) -> bool {
+        // let id = self.env.get(&id).unwrap();
+        match ty {
+            Ty::Var(v) if self.is_bound(v.0) => {
+                self.occurs_in(id, &self.get_representative(v.0).ty)
+            }
+            Ty::Var(v) => *ty == v.0,
+            Ty::Constr(constr) => constr.params.iter().any(|ty| self.occurs_in(id, ty)),
+        }
     }
 }

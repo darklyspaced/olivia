@@ -23,3 +23,12 @@ pub enum PTy {
     Bool,
     String,
 }
+
+impl PartialEq<Symbol> for Ty {
+    fn eq(&self, other: &Symbol) -> bool {
+        match self {
+            Ty::Var(ty_var) => ty_var.0 == *other,
+            Ty::Constr(ty_constr) => ty_constr.name == *other,
+        }
+    }
+}
