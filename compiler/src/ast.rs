@@ -12,7 +12,7 @@ use crate::{error::span::Span, interner::Symbol, token::TokenKind, value::Value}
 pub enum Ast {
     Block(VecDeque<Ast>),
     /// Identifier, then the expression being assigned to it
-    Declaration(BindIdent, Option<Expr>),
+    Declaration(BindIdent, Option<TyIdent>, Option<Expr>),
     /// The name of the function, the parameters to the function, block, and return type
     FunDeclaration {
         ident: Ident,
@@ -43,7 +43,7 @@ pub enum Ast {
 pub enum Expr {
     BinOp(Op, Box<Expr>, Box<Expr>),
     UnaryOp(Op, Box<Expr>),
-    FnInvoc(FnIdent, Option<Vec<Expr>>),
+    FnInvoc(BindIdent, Option<Vec<Expr>>),
     Ident(BindIdent),
     Atom(Value),
 }
@@ -62,8 +62,6 @@ impl Iterator for Ast {
 
 #[derive(Debug)]
 pub struct BindIdent(pub Ident);
-#[derive(Debug)]
-pub struct FnIdent(pub Ident);
 #[derive(Debug)]
 pub struct TyIdent(pub Ident);
 

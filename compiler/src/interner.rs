@@ -10,7 +10,7 @@ pub struct Symbol(u32);
 /// address stability so when we need a new buffer, we allocate a new one but DON'T copy the old
 /// one.
 ///
-/// The interner internally then holds references to these bufs and hands them out at needed.
+/// The interner internally then holds references to these bufs and hands them out as needed.
 pub struct Interner {
     map: HashMap<&'static str, Symbol>,
     vec: Vec<&'static str>,

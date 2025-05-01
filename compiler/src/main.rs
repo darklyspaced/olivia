@@ -46,20 +46,24 @@ fn main() {
                     Ok(s) => println!("{s:?}"),
                     Err(e) => {
                         if olivia.debug {
+                            // SAFETY: this _shouldn't_ cause UB as long you don't run cargo
+                            // elsewhere while also running this at the same time...
+                            unsafe {
+                                std::env::set_var("RUST_BACKTRACE", "full");
+                            }
                             println!("{}", e.backtrace);
                         }
-                        println!("{}", Report::from(e))
+                        println!("{}", Report::from(e));
+                        if !olivia.debug {
+                            println!(
+                                "{}",
+                                Formatted::from(
+                                    String::from("To show backtraces for errors within the compiler itself, enable the `--debug` flag.")
+                                ).colour(Colour::Yellow)
+                            );
+                        }
                     }
                 }
-            }
-
-            if !olivia.debug {
-                println!(
-                    "{}",
-                    Formatted::from(
-                        String::from("To show backtraces for errors within the compiler itself, enable the `--debug` flag.")
-                    ).colour(Colour::Yellow)
-                );
             }
         }
         Commands::Tokenize { filename } => {

@@ -1,3 +1,5 @@
+use std::iter;
+
 use strum::IntoEnumIterator;
 
 use crate::{
@@ -43,11 +45,11 @@ impl<'de> TypedAst<'de> {
     }
 
     /// Initialises a fresh type variable and gives it a generated symbol
-    fn fresh(&mut self) -> TypeId {
+    fn fresh(&mut self) -> (Symbol, TypeId) {
         let constr_sym = self
             .interner
             .intern(&format!("$#{}", self.disjoint_set.get_len()));
-        self.disjoint_set.fresh(constr_sym)
+        (constr_sym, self.disjoint_set.fresh(constr_sym))
     }
 
     /// Create all the type constructors that should already exist for
@@ -57,7 +59,7 @@ impl<'de> TypedAst<'de> {
     fn init_tyconsts(&mut self) {
         for elem in PTy::iter() {
             let sym = self.interner.intern(&elem.to_string());
-            let id = self.fresh();
+            let (_, id) = self.fresh();
             self.env.rec_prelude(sym, id);
         }
 
@@ -120,16 +122,19 @@ impl<'de> TypedAst<'de> {
 
     pub fn infer(&mut self, ast: Ast, expected: Ty) -> TypeId {
         match ast {
-            Ast::Declaration(ident, expr) => match expr {
+            Ast::Declaration(ident, ty, expr) => match expr {
                 Some(expr) => {
-                    let ty = self.infer(Ast::Expr(expr), expected);
+                    let ty = match ty {
+                        Some(t) => todo!(),
+                        None => self.infer(Ast::Expr(expr), expected),
+                    };
                     self.env.record(ident.0.name, ty);
-                    return ty;
+                    ty
                 }
                 None => {
-                    let ty = self.fresh();
+                    let (_, ty) = self.fresh();
                     self.env.record(ident.0.name, ty);
-                    return ty;
+                    ty
                 }
             },
             Ast::Expr(expr) => match expr {
@@ -146,26 +151,38 @@ impl<'de> TypedAst<'de> {
                         .push(Constraint::Eq(Ty::Var(TyVar(var.0.name)), expected));
                     todo!()
                 }
+                Expr::FnInvoc(ident, params) => {
+                    // fresh ty variables with return type as expected var
+                    let params_tys = params
+                        .unwrap_or(vec![])
+                        .iter()
+                        .map(|_| Ty::Var(TyVar(self.fresh().0)))
+                        .chain(iter::once(expected))
+                        .collect::<Vec<Ty>>();
+
+                    let fn_ty = Ty::Constr(TyConstr {
+                        name: ident.0.name,
+                        params: params_tys,
+                    });
+
+                    // saying here that we want the type of this blank function to be the one
+                    // associated with the `ident` (hence to match the declaration). Essentially,
+                    // we are binding all fresh type variables to what they should be based on the
+                    // declaration
+                    let inferred_fn = self.infer(Ast::Expr(Expr::Ident(ident)), fn_ty);
+
+                    // TODO: need to construct the environment during parse time so that all the
+                    // function types can be constructed then this environment needs to be passed
+                    // to the type checker which
+
+                    todo!()
+                }
                 _ => todo!(),
             },
             Ast::Block(_) => unreachable!(),
             _ => todo!(),
         }
     }
-
-    /// Gives a concrete fresh type `T` to the usage of a variable, specialising it from it's polymorphic
-    /// type (which it implicitly already has) down to something that can be unified. It's
-    /// polymorphic type is it's 'assumed' type that all let bindings have (in formal logic). In
-    /// this case it would just been the type that the variable has before being assigned a fresh
-    /// type (essentially anything because we have gleaned information on it yet).
-    ///
-    /// This is very much only a declaration with no value assigned to it
-    fn var(&mut self) {
-        // consume a let binding, giving the ident a type in the environment
-    }
-
-    /// Attempts to unify the type (e -> t) with (x).
-    fn application() {}
 
     /// Returns the representative of a `Symbol` in the current `Env`
     fn get_representative(&self, sym: Symbol) -> &Elem {
@@ -183,11 +200,11 @@ impl<'de> TypedAst<'de> {
                 // conduct a pointwise unification of all the parameters because they should be of
                 // the same type since they are the same function and have the same params
                 for (ta, tb) in t1.params.iter().zip(t2.params.iter()) {
-                    self.unify(&ta, &tb);
+                    self.unify(ta, tb);
                 }
             }
 
-            (Ty::Var(v1), Ty::Var(v2)) if v1 == v2 => return,
+            (Ty::Var(v1), Ty::Var(v2)) if v1 == v2 => (),
 
             (Ty::Var(v), _) if self.is_bound(v.0) => {
                 // v is bound so make a substitution for it and try again
@@ -229,14 +246,14 @@ impl<'de> TypedAst<'de> {
     /// Checks is `id` occurs in `ty` to prevent a recursion when binding `id` to `ty`. It achieves
     /// this by recursively checking the type by looking at it's representative if it has one or
     /// it's componenets if it's a constructor
-    fn occurs_in(&self, id: Symbol, ty: &Ty) -> bool {
+    fn occurs_in(&self, _id: Symbol, ty: &Ty) -> bool {
         // let id = self.env.get(&id).unwrap();
         match ty {
             Ty::Var(v) if self.is_bound(v.0) => {
-                self.occurs_in(id, &self.get_representative(v.0).ty)
+                self.occurs_in(_id, &self.get_representative(v.0).ty)
             }
             Ty::Var(v) => *ty == v.0,
-            Ty::Constr(constr) => constr.params.iter().any(|ty| self.occurs_in(id, ty)),
+            Ty::Constr(constr) => constr.params.iter().any(|ty| self.occurs_in(_id, ty)),
         }
     }
 }

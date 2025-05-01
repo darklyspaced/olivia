@@ -3,7 +3,8 @@ pub mod utils;
 use std::iter::Peekable;
 
 use crate::{
-    ast::{Ast, BindIdent, Expr, FnIdent, Ident, Op, OpKind, TyIdent},
+    ast::{Ast, BindIdent, Expr, Ident, Op, OpKind, TyIdent},
+    env::Env,
     error::{
         self,
         parse_err::{ParseError, ParseErrorKind as PEKind},
@@ -78,15 +79,15 @@ pub struct Parser<'de> {
     interner: &'de mut Interner,
     source_map: &'de SourceMap,
     toks: Peekable<Lexer<'de>>,
+    env: Env,
 }
 
 impl<'de> Parser<'de> {
     pub fn new(iter: Lexer<'de>, source_map: &'de SourceMap, interner: &'de mut Interner) -> Self {
-        // TODO: initialise all the types for OpKind here (with interner) so that they can be used
-        // by the type checker
         Self {
             state: State::Parse,
             toks: iter.peekable(),
+            env: Env::new(),
             source_map,
             interner,
         }
@@ -168,26 +169,36 @@ impl<'de> Parser<'de> {
     }
 
     fn for_loop(&mut self) -> Result<Ast, Error> {
-        let _for = self.toks.next();
-        let _l_paren = self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
+        self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
 
         //let ty = TyIdent(self.ident()?); make this optional with ident: ty and match on `:`
         let ident = BindIdent(self.ident()?);
-        let _equal = self.eat(TokenKind::Equal, |_| PEKind::IdxNotInitialised)?;
-        let value = self.expression()?;
-        let _semi = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
+        let mut ty = None;
 
-        // START_POINT: need to figure out how to make this guaranteed to evaluate to a boolean
+        if let Some(Ok(Token {
+            kind: TokenKind::Colon,
+            ..
+        })) = self.toks.peek()
+        {
+            self.toks.next();
+            ty = Some(TyIdent(self.ident()?));
+        }
+
+        self.eat(TokenKind::Equal, |_| PEKind::IdxNotInitialised)?;
+
+        let value = self.expression()?;
+        self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
+
         let predicate = self.expression()?;
-        let _semi = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
+        self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
         let assignment = self.assignment(false)?;
 
-        let _r_paren = self.eat(TokenKind::RightParen, PEKind::ExpRParenFound)?;
+        self.eat(TokenKind::RightParen, PEKind::ExpRParenFound)?;
         let block = self.block()?;
 
         Ok(Ast::ForLoop {
-            decl: Box::new(Ast::Declaration(ident, Some(value))),
+            decl: Box::new(Ast::Declaration(ident, ty, Some(value))),
             predicate,
             assignment: Box::new(assignment),
             block: Box::new(block),
@@ -256,16 +267,12 @@ impl<'de> Parser<'de> {
         let _l_brace = self.eat(TokenKind::LeftBrace, PEKind::ExpLParenFound)?;
 
         let mut next = self.peek(PEKind::ExpLBraceFound)?;
-        if next.kind != TokenKind::RightBrace {
-            loop {
-                stmts.push(self.stmt()?);
-                next = self.peek(PEKind::ExpRBraceFound)?;
-                if next.kind == TokenKind::RightBrace {
-                    let _r_paren = self.toks.next();
-                    break;
-                }
-            }
+        while next.kind != TokenKind::RightBrace {
+            stmts.push(self.stmt()?);
+            next = self.peek(PEKind::ExpRBraceFound)?;
         }
+
+        let _r_brace = self.toks.next();
 
         Ok(Ast::Block(stmts.into()))
     }
@@ -300,15 +307,23 @@ impl<'de> Parser<'de> {
     fn declaration(&mut self) -> Result<Ast, Error> {
         let _let = self.toks.next();
         let ident = BindIdent(self.ident()?);
+        let mut ty = None;
 
         let branch =
             self.peek(|x| PEKind::ExpFound(vec![TokenKind::Semicolon, TokenKind::Equal], x))?;
+        let kind = branch.kind; // BORROW: signals to the compiler that the reference isn't
+        // actually used further on
 
-        match branch.kind {
+        if kind == TokenKind::Colon {
+            self.toks.next();
+            ty = Some(TyIdent(self.ident()?));
+        }
+
+        match kind {
             TokenKind::Semicolon => {
                 self.toks.next();
 
-                Ok(Ast::Declaration(ident, None))
+                Ok(Ast::Declaration(ident, ty, None))
             }
             TokenKind::Equal => {
                 self.toks.next();
@@ -317,7 +332,7 @@ impl<'de> Parser<'de> {
 
                 let _semicolon = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
-                Ok(Ast::Declaration(ident, Some(expr)))
+                Ok(Ast::Declaration(ident, ty, Some(expr)))
             }
             _ => Err(self.make_err(|tok| {
                 PEKind::ExpFound(vec![TokenKind::Semicolon, TokenKind::Equal], tok)
@@ -354,7 +369,9 @@ impl<'de> Parser<'de> {
                 let next = self.peek(PEKind::ExpSemicolonFound)?;
                 match next.kind {
                     TokenKind::LeftParen => {
-                        let mut next = self.peek(PEKind::ExpExprFound)?;
+                        self.next();
+
+                        let mut next = dbg!(self.peek(PEKind::ExpExprFound)?);
                         if next.kind != TokenKind::RightParen {
                             loop {
                                 params.push(self.expression()?);
@@ -365,10 +382,10 @@ impl<'de> Parser<'de> {
                                         x,
                                     )
                                 };
+
                                 next = self.peek(err)?;
                                 match next.kind {
                                     TokenKind::RightParen => {
-                                        let _r_paren = self.toks.next();
                                         break;
                                     }
                                     TokenKind::Comma => {
@@ -380,8 +397,10 @@ impl<'de> Parser<'de> {
                             }
                         }
 
+                        let _r_paren = self.next();
+
                         Expr::FnInvoc(
-                            FnIdent(ident),
+                            BindIdent(ident),
                             if params.is_empty() {
                                 None
                             } else {
@@ -428,10 +447,11 @@ impl<'de> Parser<'de> {
 
 fn infix_binding_power(op: &OpKind) -> (u8, u8) {
     match op {
-        OpKind::Or => (1, 2),
-        OpKind::And => (3, 4),
-        OpKind::Greater | OpKind::GeEq | OpKind::Less | OpKind::LeEq => (5, 6),
-        OpKind::Add | OpKind::Sub => (7, 8),
-        OpKind::Mult | OpKind::Div => (9, 10),
+        OpKind::Equal => (1, 2),
+        OpKind::Or => (3, 4),
+        OpKind::And => (5, 6),
+        OpKind::Greater | OpKind::GreaterEqual | OpKind::Less | OpKind::LessEqual => (7, 8),
+        OpKind::Add | OpKind::Sub => (9, 10),
+        OpKind::Mult | OpKind::Div => (11, 12),
     }
 }
