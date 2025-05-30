@@ -9,6 +9,7 @@ use crate::{
     error::source_map::SourceMap,
     interner::{Interner, Symbol},
     ty::{PTy, Ty, TyConstr, TyVar, TypeId},
+    value::ValueKind,
 };
 
 struct TypedAst<'de> {
@@ -27,13 +28,19 @@ enum Constraint {
 }
 
 impl<'de> TypedAst<'de> {
-    pub fn new(ast: Ast, interner: &'de mut Interner, source_map: &'de SourceMap) -> Self {
+    pub fn new(
+        ast: Ast,
+        interner: &'de mut Interner,
+        source_map: &'de SourceMap,
+        disjoint_set: DisjointSet,
+        env: Env,
+    ) -> Self {
         TypedAst {
             ast,
             interner,
             source_map,
-            env: Env::new(),
-            disjoint_set: DisjointSet::default(),
+            env,
+            disjoint_set,
             constraints: Vec::new(),
         }
     }
@@ -48,7 +55,7 @@ impl<'de> TypedAst<'de> {
     fn fresh(&mut self) -> (Symbol, TypeId) {
         let constr_sym = self
             .interner
-            .intern(&format!("$#{}", self.disjoint_set.get_len()));
+            .intern(&format!("0x{}", self.disjoint_set.get_len()));
         (constr_sym, self.disjoint_set.fresh(constr_sym))
     }
 
@@ -120,6 +127,8 @@ impl<'de> TypedAst<'de> {
     /// variation of constraint solving based Hindley-Milner that is bidirectional
     pub fn type_ck(&mut self) {}
 
+    pub fn check() {}
+
     pub fn infer(&mut self, ast: Ast, expected: Ty) -> TypeId {
         match ast {
             Ast::Declaration(ident, ty, expr) => match expr {
@@ -146,7 +155,10 @@ impl<'de> TypedAst<'de> {
                     todo!()
                 }
                 Expr::Ident(var) => {
-                    let ty = self.env.get(&var.0.name).unwrap();
+                    let ty = self.env.get(&var.0.name).expect(&format!(
+                        "attempted to access {:?} which doesn't exist",
+                        var.0.name
+                    ));
                     self.constraints
                         .push(Constraint::Eq(Ty::Var(TyVar(var.0.name)), expected));
                     todo!()
@@ -167,8 +179,11 @@ impl<'de> TypedAst<'de> {
 
                     // saying here that we want the type of this blank function to be the one
                     // associated with the `ident` (hence to match the declaration). Essentially,
-                    // we are binding all fresh type variables to what they should be based on the
+                    // we are binding all fresh type variables to what they should be, based on the
                     // declaration
+
+                    // TODO: this should be replaced with a check as we are checking that it
+                    // matches this type
                     let inferred_fn = self.infer(Ast::Expr(Expr::Ident(ident)), fn_ty);
 
                     // TODO: need to construct the environment during parse time so that all the
@@ -177,6 +192,12 @@ impl<'de> TypedAst<'de> {
 
                     todo!()
                 }
+                Expr::Atom(val) => match val.kind {
+                    ValueKind::Integer(i) => {
+                        self.constraints.push(Constraint::Eq((), ()));
+                    }
+                    ValueKind::Float(f) => {}
+                },
                 _ => todo!(),
             },
             Ast::Block(_) => unreachable!(),

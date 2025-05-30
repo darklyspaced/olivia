@@ -54,16 +54,16 @@ fn main() {
                             println!("{}", e.backtrace);
                         }
                         println!("{}", Report::from(e));
-                        if !olivia.debug {
-                            println!(
+                    }
+                }
+            }
+            if !olivia.debug {
+                println!(
                                 "{}",
                                 Formatted::from(
                                     String::from("To show backtraces for errors within the compiler itself, enable the `--debug` flag.")
                                 ).colour(Colour::Yellow)
                             );
-                        }
-                    }
-                }
             }
         }
         Commands::Tokenize { filename } => {

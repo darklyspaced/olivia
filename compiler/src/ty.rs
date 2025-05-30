@@ -8,7 +8,8 @@ pub enum Ty {
     Constr(TyConstr),
 }
 
-/// A type constructor with paramaters to fill out
+/// A type constructor with paramaters to fill out where params.last is the output type and the
+/// constructor transforms params[..params.length()-2] -> params[params.length()-1]
 pub struct TyConstr {
     pub name: Symbol,
     pub params: Vec<Ty>,

@@ -4,15 +4,17 @@ use std::iter::Peekable;
 
 use crate::{
     ast::{Ast, BindIdent, Expr, Ident, Op, OpKind, TyIdent},
+    disjoint_set::DisjointSet,
     env::Env,
     error::{
         self,
         parse_err::{ParseError, ParseErrorKind as PEKind},
         source_map::SourceMap,
     },
-    interner::Interner,
+    interner::{Interner, Symbol},
     lexer::Lexer,
     token::{Token, TokenKind},
+    ty::{Ty, TyConstr, TypeId},
     value::Value,
 };
 
@@ -79,6 +81,7 @@ pub struct Parser<'de> {
     interner: &'de mut Interner,
     source_map: &'de SourceMap,
     toks: Peekable<Lexer<'de>>,
+    disjoint_set: DisjointSet,
     env: Env,
 }
 
@@ -88,6 +91,7 @@ impl<'de> Parser<'de> {
             state: State::Parse,
             toks: iter.peekable(),
             env: Env::new(),
+            disjoint_set: DisjointSet::default(),
             source_map,
             interner,
         }
@@ -252,6 +256,19 @@ impl<'de> Parser<'de> {
             _ => return Err(self.make_err(err)),
         };
 
+        let params_ty = params.iter().map(|(_, ty)| if ty.is_none() {
+            Ty::Var(TyVar(self.fresh().0))
+        } else {
+                Ty::Var(
+            })
+        // self.env.record(
+        //     ident,
+        //     TyConstr {
+        //         name: ident,
+        //         params: params.push(ret),
+        //     },
+        // );
+
         let block = self.block()?;
 
         Ok(Ast::FunDeclaration {
@@ -260,6 +277,14 @@ impl<'de> Parser<'de> {
             ret,
             block: Box::new(block),
         })
+    }
+
+    /// Initialises a fresh type variable and gives it a generated symbol
+    fn fresh(&mut self) -> (Symbol, TypeId) {
+        let constr_sym = self
+            .interner
+            .intern(&format!("0x{}", self.disjoint_set.get_len()));
+        (constr_sym, self.disjoint_set.fresh(constr_sym))
     }
 
     fn block(&mut self) -> Result<Ast, Error> {

@@ -1,3 +1,3 @@
-fn test(int c) {
+fn test(c: int) {
     let x = 100;
 }
