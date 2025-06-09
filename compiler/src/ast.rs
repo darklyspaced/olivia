@@ -14,11 +14,16 @@ pub enum Ast {
     /// Identifier, then the expression being assigned to it
     Declaration(BindIdent, Option<TyIdent>, Option<Expr>),
     /// The name of the function, the parameters to the function, block, and return type
+    // TODO: technically all the names should be `BindIdent` but i cba rn
     FunDeclaration {
-        ident: Ident,
+        name: Ident,
         params: Vec<(BindIdent, Option<TyIdent>)>,
         ret: Option<TyIdent>,
         block: Box<Ast>,
+    },
+    Struct {
+        name: Ident,
+        fields: Vec<(BindIdent, TyIdent)>,
     },
     ForLoop {
         decl: Box<Ast>,
@@ -32,7 +37,7 @@ pub enum Ast {
         otherwise: Option<Box<Ast>>, // this is `(Block || If)`
     },
     Application {
-        ident: Ident,
+        name: Ident,
         params: Vec<Expr>,
     },
     Assignment(Ident, Expr),

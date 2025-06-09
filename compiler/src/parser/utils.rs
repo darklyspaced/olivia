@@ -95,6 +95,7 @@ impl Parser<'_> {
         })
     }
 
+    /// Eats `kind` otherwise throws `err`
     pub fn eat<G>(&mut self, kind: TokenKind, err: G) -> Result<Token, Error>
     where
         G: FnOnce(String) -> PEKind + Clone,

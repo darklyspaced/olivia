@@ -1,0 +1,4 @@
+struct Player {
+    health: int,
+    alive: bool,
+}

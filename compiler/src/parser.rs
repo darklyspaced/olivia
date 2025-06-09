@@ -97,6 +97,31 @@ impl<'de> Parser<'de> {
         }
     }
 
+    fn structure(&mut self) -> Result<Ast, Error> {
+        println!("gets to structure");
+        let _struct = self.toks.next();
+        let name = self.ident()?;
+        self.eat(TokenKind::LeftBrace, PEKind::ExpLBraceFound)?;
+        let mut fields = vec![];
+
+        while self
+            .peek(|x| PEKind::ExpFound(vec![TokenKind::Ident, TokenKind::RightBrace], x))?
+            .kind
+            != TokenKind::RightBrace
+        {
+            let field = BindIdent(self.ident()?);
+            self.eat(TokenKind::Colon, PEKind::ExpTyAnnotationFound)?;
+            let ty = TyIdent(self.ident()?);
+            self.eat(TokenKind::Comma, PEKind::ExpCommaFound)?;
+
+            fields.push((field, ty));
+        }
+
+        let _r_brace = self.toks.next();
+
+        Ok(Ast::Struct { name, fields })
+    }
+
     fn fn_app(&mut self, ident: Ident) -> Result<Ast, Error> {
         let _l_paren = self.toks.next();
 
@@ -127,14 +152,17 @@ impl<'de> Parser<'de> {
             }
         }
 
-        Ok(Ast::Application { ident, params })
+        Ok(Ast::Application {
+            name: ident,
+            params,
+        })
     }
 
     fn if_stmt(&mut self) -> Result<Ast, Error> {
         let _if = self.toks.next();
-        let _l_paren = self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
+        self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
         let predicate = self.expression()?;
-        let _r_paren = self.eat(TokenKind::RightParen, PEKind::ExpRParenFound)?;
+        self.eat(TokenKind::RightParen, PEKind::ExpRParenFound)?;
 
         let then = self.block()?;
 
@@ -212,7 +240,7 @@ impl<'de> Parser<'de> {
     fn fn_decl(&mut self) -> Result<Ast, Error> {
         let _fn = self.toks.next();
         let ident = self.ident()?;
-        let _l_paren = self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
+        self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
 
         let mut params = vec![];
 
@@ -256,11 +284,11 @@ impl<'de> Parser<'de> {
             _ => return Err(self.make_err(err)),
         };
 
-        let params_ty = params.iter().map(|(_, ty)| if ty.is_none() {
-            Ty::Var(TyVar(self.fresh().0))
-        } else {
-                Ty::Var(
-            })
+        // let params_ty = params.iter().map(|(_, ty)| if ty.is_none() {
+        //     Ty::Var(TyVar(self.fresh().0))
+        // } else {
+        //         Ty::Var(
+        //     })
         // self.env.record(
         //     ident,
         //     TyConstr {
@@ -272,7 +300,7 @@ impl<'de> Parser<'de> {
         let block = self.block()?;
 
         Ok(Ast::FunDeclaration {
-            ident,
+            name: ident,
             params,
             ret,
             block: Box::new(block),
@@ -302,7 +330,7 @@ impl<'de> Parser<'de> {
         Ok(Ast::Block(stmts.into()))
     }
 
-    /// func | var | assignment | for | if
+    /// func | var | assignment | for | if | struct
     fn stmt(&mut self) -> Result<Ast, Error> {
         match self
             .peek(|x| PEKind::ExpFound(vec![TokenKind::Fn, TokenKind::Let], x))?
@@ -312,6 +340,7 @@ impl<'de> Parser<'de> {
             TokenKind::Fn => self.fn_decl(),
             TokenKind::For => self.for_loop(),
             TokenKind::If => self.if_stmt(),
+            TokenKind::Struct => self.structure(),
             _ => self.assignment(true),
         }
     }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::interner::Symbol;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -23,6 +25,21 @@ pub enum PTy {
     Int,
     Bool,
     String,
+}
+
+pub struct Value(usize);
+pub struct Use(usize);
+
+pub enum VTyConstr {
+    VBool,
+    VFunc { arg: Vec<Use>, ret: Value },
+    VStruct { fields: HashMap<Symbol, Value> },
+}
+
+pub enum UTyConstr {
+    UBool,
+    UFunc { arg: Vec<Value>, ret: Use },
+    UStruct { fields: HashMap<Symbol, Value> },
 }
 
 impl PartialEq<Symbol> for Ty {

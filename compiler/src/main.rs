@@ -19,7 +19,7 @@ struct Olivia {
 #[derive(Subcommand)]
 enum Commands {
     /// Tokenises the input
-    Tokenize {
+    Tokenise {
         /// Source to tokenise
         filename: String,
     },
@@ -66,7 +66,7 @@ fn main() {
                             );
             }
         }
-        Commands::Tokenize { filename } => {
+        Commands::Tokenise { filename } => {
             let source_map = SourceMap::from(filename);
 
             let lexer = Lexer::new(&source_map);

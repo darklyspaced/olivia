@@ -75,7 +75,7 @@ impl Env {
         match self.prelude.data.get(symbol) {
             None => {
                 let mut curr = &self.stack[self.frame];
-                while curr.data.get(symbol).is_none() {
+                while !curr.data.contains_key(symbol) {
                     match curr.parent {
                         Some(p) => curr = &self.stack[p],
                         None => panic!(
@@ -87,5 +87,10 @@ impl Env {
             }
             x => x,
         }
+    }
+
+    pub fn in_child_scope<T>(&mut self, cb: impl FnOnce(&mut Self) -> T) -> T {
+        self.enscope();
+        cb(self)
     }
 }
