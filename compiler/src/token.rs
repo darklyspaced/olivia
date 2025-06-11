@@ -1,4 +1,4 @@
-use crate::value::ValueKind;
+use crate::value::LiteralKind;
 
 #[derive(Debug)]
 pub struct Token<'de> {
@@ -9,7 +9,7 @@ pub struct Token<'de> {
 
 impl Token<'_> {
     /// Returns the populated value kind of the token
-    pub fn val(&self) -> ValueKind {
+    pub fn val(&self) -> LiteralKind {
         match self.kind {
             TokenKind::Number => self.literal.unwrap().parse::<u64>().unwrap().into(),
             _ => panic!("{} doesn't have a type, obviously.", self.kind),
@@ -26,18 +26,25 @@ pub enum TokenKind {
     Semicolon,
     Comma,
     Plus,
+    PlusDot,
     Minus,
+    MinusDot,
     Arrow,
     Star,
+    StarDot,
     Dot,
     Equal,
     EqualEqual,
     Bang,
     BangEqual,
     Greater,
+    GreaterDot,
     GreaterEqual,
+    GreaterEqualDot,
     Less,
+    LessDot,
     LessEqual,
+    LessEqualDot,
     Slash,
     String,
     Number,

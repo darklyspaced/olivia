@@ -5,7 +5,7 @@ use std::{
 
 use strum::EnumIter;
 
-use crate::{error::span::Span, interner::Symbol, token::TokenKind, value::Value};
+use crate::{error::span::Span, interner::Symbol, token::TokenKind, value::Literal};
 
 #[derive(Debug)]
 /// The spans of higher level things are the sums of the spans of their components
@@ -50,7 +50,7 @@ pub enum Expr {
     UnaryOp(Op, Box<Expr>),
     FnInvoc(BindIdent, Option<Vec<Expr>>),
     Ident(BindIdent),
-    Atom(Value),
+    Atom(Literal),
 }
 
 impl Iterator for Ast {
@@ -80,6 +80,7 @@ pub struct Ident {
 #[derive(Debug)]
 pub struct Op {
     pub kind: OpKind,
+    pub ty: OpType,
     pub span: Span,
 }
 
@@ -96,6 +97,20 @@ pub enum OpKind {
     LessEqual,
     Or,
     And,
+}
+
+#[derive(Debug, strum::Display, EnumIter)]
+pub enum OpType {
+    /// 2 + 1
+    IntOp,
+    /// 2 +. 1
+    FloatOp,
+    /// 2 > 1
+    IntCmp,
+    /// 2 >. 1
+    FloatCmp,
+    /// Generic == and !=
+    AnyCmp,
 }
 
 impl TryFrom<TokenKind> for OpKind {
@@ -115,6 +130,30 @@ impl TryFrom<TokenKind> for OpKind {
             TokenKind::DoubleAmpersand => Ok(OpKind::And),
             TokenKind::DoublePipe => Ok(OpKind::Or),
             _ => Err(()),
+        }
+    }
+}
+
+impl From<TokenKind> for OpType {
+    fn from(value: TokenKind) -> Self {
+        use TokenKind::*;
+        match value {
+            Plus => Self::IntOp,
+            PlusDot => Self::FloatOp,
+            Minus => Self::IntOp,
+            MinusDot => Self::FloatOp,
+            Greater => Self::IntCmp,
+            GreaterDot => Self::FloatCmp,
+            GreaterEqual => Self::IntCmp,
+            GreaterEqualDot => Self::FloatCmp,
+            Less => Self::IntCmp,
+            LessDot => Self::FloatCmp,
+            LessEqual => Self::IntCmp,
+            LessEqualDot => Self::FloatCmp,
+            x => unreachable!(
+                "{} should have been filtered out by pratt parsing algo before this via try_from",
+                x
+            ),
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{interner::Symbol, ty::TypeId};
+use crate::{interner::Symbol, ty::Value};
 
 /// Stores all the structs that correspond to all the environments of the program. This is stored
 /// in a spagetti tree structure that essentially functions like a stack except popping doesn't
@@ -18,7 +18,7 @@ pub struct Env {
 
 #[derive(Default)]
 struct Scope {
-    data: HashMap<Symbol, TypeId>,
+    data: HashMap<Symbol, Value>,
     parent: Option<usize>,
 }
 
@@ -63,15 +63,15 @@ impl Env {
         }
     }
 
-    pub fn record(&mut self, symbol: Symbol, ty: TypeId) {
+    pub fn record(&mut self, symbol: Symbol, ty: Value) {
         self.stack[self.frame].data.insert(symbol, ty);
     }
 
-    pub fn rec_prelude(&mut self, symbol: Symbol, ty: TypeId) {
+    pub fn rec_prelude(&mut self, symbol: Symbol, ty: Value) {
         self.prelude.data.insert(symbol, ty);
     }
 
-    pub fn get(&self, symbol: &Symbol) -> Option<&TypeId> {
+    pub fn get(&self, symbol: &Symbol) -> Option<&Value> {
         match self.prelude.data.get(symbol) {
             None => {
                 let mut curr = &self.stack[self.frame];
@@ -91,6 +91,8 @@ impl Env {
 
     pub fn in_child_scope<T>(&mut self, cb: impl FnOnce(&mut Self) -> T) -> T {
         self.enscope();
-        cb(self)
+        let result = cb(self);
+        self.descope();
+        result
     }
 }

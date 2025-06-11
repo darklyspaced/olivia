@@ -15,7 +15,7 @@ use crate::{
     lexer::Lexer,
     token::{Token, TokenKind},
     ty::{Ty, TyConstr, TypeId},
-    value::Value,
+    value::Literal,
 };
 
 type Error = error::Error<ParseError>;
@@ -411,7 +411,7 @@ impl<'de> Parser<'de> {
         let mut lhs = match next.kind {
             TokenKind::Number | TokenKind::Float => {
                 let val_tok = self.toks.next().unwrap().unwrap();
-                Expr::Atom(Value {
+                Expr::Atom(Literal {
                     kind: val_tok.val(),
                     span: self.source_map.span_from_tok(&val_tok),
                 })
@@ -476,6 +476,7 @@ impl<'de> Parser<'de> {
             let Ok(op_kind) = OpKind::try_from(tok.kind) else {
                 break;
             };
+            let ty = OpTy::from(tok.kind);
 
             let (l, r) = infix_binding_power(&op_kind);
             if l < min_bp {
