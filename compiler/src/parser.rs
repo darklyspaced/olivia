@@ -3,7 +3,7 @@ pub mod utils;
 use std::iter::Peekable;
 
 use crate::{
-    ast::{Ast, BindIdent, Expr, Ident, Op, OpKind, TyIdent},
+    ast::{Ast, BindIdent, Ident, Op, OpKind, OpType, TyIdent},
     disjoint_set::DisjointSet,
     env::Env,
     error::{
@@ -134,7 +134,7 @@ impl<'de> Parser<'de> {
             loop {
                 let expr = self.expression()?;
 
-                params.push(expr);
+                params.push(Box::new(expr));
 
                 let err = |x| PEKind::ExpFound(vec![TokenKind::Comma, TokenKind::RightParen], x);
                 next = self.peek(err)?;
@@ -161,7 +161,7 @@ impl<'de> Parser<'de> {
     fn if_stmt(&mut self) -> Result<Ast, Error> {
         let _if = self.toks.next();
         self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
-        let predicate = self.expression()?;
+        let predicate = Box::new(self.expression()?);
         self.eat(TokenKind::RightParen, PEKind::ExpRParenFound)?;
 
         let then = self.block()?;
@@ -221,7 +221,7 @@ impl<'de> Parser<'de> {
         let value = self.expression()?;
         self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
-        let predicate = self.expression()?;
+        let predicate = Box::new(self.expression()?);
         self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
         let assignment = self.assignment(false)?;
@@ -230,7 +230,7 @@ impl<'de> Parser<'de> {
         let block = self.block()?;
 
         Ok(Ast::ForLoop {
-            decl: Box::new(Ast::Declaration(ident, ty, Some(value))),
+            decl: Box::new(Ast::Declaration(ident, ty, Some(Box::new(value)))),
             predicate,
             assignment: Box::new(assignment),
             block: Box::new(block),
@@ -354,7 +354,7 @@ impl<'de> Parser<'de> {
             let _semicolon = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
         }
 
-        Ok(Ast::Assignment(ident, expr))
+        Ok(Ast::Assignment(ident, Box::new(expr)))
     }
 
     /// Parse a declaration
@@ -386,7 +386,7 @@ impl<'de> Parser<'de> {
 
                 let _semicolon = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
-                Ok(Ast::Declaration(ident, ty, Some(expr)))
+                Ok(Ast::Declaration(ident, ty, Some(Box::new(expr))))
             }
             _ => Err(self.make_err(|tok| {
                 PEKind::ExpFound(vec![TokenKind::Semicolon, TokenKind::Equal], tok)
@@ -395,7 +395,7 @@ impl<'de> Parser<'de> {
     }
 
     /// Extract an expression, handling any errors that were raised
-    fn expression(&mut self) -> Result<Expr, Error> {
+    fn expression(&mut self) -> Result<Ast, Error> {
         let res = self.expr(0);
         let Ok(expr) = res else {
             self.state = State::Recover;
@@ -404,14 +404,15 @@ impl<'de> Parser<'de> {
         Ok(expr)
     }
 
+    /// TODO: make everythign expressions
     /// An implementation of Pratt Parsing to deal with mathematical operations. All calls to this
     /// function from outside of itself must have `min_bp` = 0.
-    fn expr(&mut self, min_bp: u8) -> Result<Expr, Error> {
+    fn expr(&mut self, min_bp: u8) -> Result<Ast, Error> {
         let next = self.peek(PEKind::ExpExprFound)?;
         let mut lhs = match next.kind {
             TokenKind::Number | TokenKind::Float => {
                 let val_tok = self.toks.next().unwrap().unwrap();
-                Expr::Atom(Literal {
+                Ast::Atom(Literal {
                     kind: val_tok.val(),
                     span: self.source_map.span_from_tok(&val_tok),
                 })
@@ -453,7 +454,7 @@ impl<'de> Parser<'de> {
 
                         let _r_paren = self.next();
 
-                        Expr::FnInvoc(
+                        Ast::FnInvoc(
                             BindIdent(ident),
                             if params.is_empty() {
                                 None
@@ -462,7 +463,7 @@ impl<'de> Parser<'de> {
                             },
                         )
                     }
-                    _ => Expr::Ident(BindIdent(ident)),
+                    _ => Ast::Ident(BindIdent(ident)),
                 }
             }
             _ => {
@@ -476,7 +477,7 @@ impl<'de> Parser<'de> {
             let Ok(op_kind) = OpKind::try_from(tok.kind) else {
                 break;
             };
-            let ty = OpTy::from(tok.kind);
+            let ty = OpType::from(tok.kind);
 
             let (l, r) = infix_binding_power(&op_kind);
             if l < min_bp {
@@ -489,11 +490,12 @@ impl<'de> Parser<'de> {
             // it
             let tok_op = self.toks.next().unwrap().unwrap();
             let op = Op {
+                ty,
                 kind: op_kind,
                 span: self.source_map.span_from_tok(&tok_op),
             };
             let rhs = self.expr(r)?;
-            lhs = Expr::BinOp(op, Box::new(lhs), Box::new(rhs))
+            lhs = Ast::BinOp(op, Box::new(lhs), Box::new(rhs))
         }
 
         Ok(lhs)

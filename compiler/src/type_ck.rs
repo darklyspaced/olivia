@@ -1,14 +1,10 @@
-use std::iter;
-
-use strum::IntoEnumIterator;
-
 use crate::{
-    ast::{Ast, Expr, Op, OpKind, OpType},
+    ast::{Ast, OpType},
     disjoint_set::{DisjointSet, Elem},
     env::Env,
     error::source_map::SourceMap,
     interner::{Interner, Symbol},
-    ty::{PTy, Ty, TyConstr, TyVar, TypeId, Value},
+    ty::{PTy, TyVar, TypeId, Value},
     tyck_core::TyCkCore,
     value::LiteralKind,
 };
@@ -21,11 +17,6 @@ struct TypedAst<'de> {
     disjoint_set: DisjointSet,
     interner: &'de mut Interner,
     source_map: &'de SourceMap,
-    constraints: Vec<Constraint>,
-}
-
-enum Constraint {
-    Eq(Ty, Ty),
 }
 
 impl<'de> TypedAst<'de> {
@@ -42,7 +33,6 @@ impl<'de> TypedAst<'de> {
             source_map,
             env,
             disjoint_set,
-            constraints: Vec::new(),
         }
     }
 
@@ -68,8 +58,9 @@ impl<'de> TypedAst<'de> {
                 then,
                 otherwise,
             } => {
-                let pred_ty = self.type_ck(core, predicate);
-                core.flow(pred_ty, core.bool());
+                let pred_ty = self.type_ck(core, *predicate);
+                let target_ty = core.bool_use();
+                core.flow(pred_ty, target_ty);
 
                 // We only want to perform the following if it's in a place where it being given a
                 // type makes sense
@@ -77,59 +68,59 @@ impl<'de> TypedAst<'de> {
                 // TODO: redo the syntax tree so that it supports having an if expression as a type
                 // or even having a block as a type for example
                 let then_ty = self.type_ck(core, *then);
-                if 
-                let otherwise_ty = self.type_ck(core, *otherwise);
-            }
-            Ast::Expr(expr) => match expr {
-                Expr::Ident(ident) => self
-                    .env
-                    .get(&ident.0.name)
-                    .expect(&format!(
-                        "Variable used before definition: {}",
-                        self.interner.lookup(ident.0.name)
-                    ))
-                    .clone(),
-                Expr::Atom(lit) => {
-                    use LiteralKind::*;
-                    match lit.kind {
-                        Integer(_) => core.int(),
-                        Float(_) => core.float(),
-                        Boolean(_) => core.bool(),
-                    }
-                }
-                Expr::BinOp(op, lhs, rhs) => {
-                    let lhs_ty = self.type_ck(core, Ast::Expr(*lhs));
-                    let rhs_ty = self.type_ck(core, Ast::Expr(*rhs));
 
-                    match op.ty {
-                        OpType::IntOp => {
-                            let bound = core.int_use(); // takes in two ints
-                            core.flow(lhs_ty, bound);
-                            core.flow(rhs_ty, bound);
-                            core.int() // emits an int
-                        }
-                        OpType::FloatOp => {
-                            let bound = core.float_use();
-                            core.flow(lhs_ty, bound);
-                            core.flow(rhs_ty, bound);
-                            core.float()
-                        }
-                        OpType::IntCmp => {
-                            let bound = core.int_use();
-                            core.flow(lhs_ty, bound);
-                            core.flow(rhs_ty, bound);
-                            core.float()
-                        }
-                        OpType::FloatCmp => {
-                            let bound = core.float_use();
-                            core.flow(lhs_ty, bound);
-                            core.flow(rhs_ty, bound);
-                            core.bool()
-                        }
-                        OpType::AnyCmp => core.bool(),
-                    }
+                // TODO: need to this make this contigent on otherwise existing
+                // let otherwise_ty = self.type_ck(core, otherwise);
+                todo!()
+            }
+            Ast::Ident(ident) => self
+                .env
+                .get(&ident.0.name)
+                .expect(&format!(
+                    "Variable used before definition: {}",
+                    self.interner.lookup(ident.0.name)
+                ))
+                .clone(),
+            Ast::Atom(lit) => {
+                use LiteralKind::*;
+                match lit.kind {
+                    Integer(_) => core.int(),
+                    Float(_) => core.float(),
+                    Boolean(_) => core.bool(),
                 }
-            },
+            }
+            Ast::BinOp(op, lhs, rhs) => {
+                let lhs_ty = self.type_ck(core, *lhs);
+                let rhs_ty = self.type_ck(core, *rhs);
+
+                match op.ty {
+                    OpType::IntOp => {
+                        let bound = core.int_use(); // takes in two ints
+                        core.flow(lhs_ty, bound);
+                        core.flow(rhs_ty, bound);
+                        core.int() // emits an int
+                    }
+                    OpType::FloatOp => {
+                        let bound = core.float_use();
+                        core.flow(lhs_ty, bound);
+                        core.flow(rhs_ty, bound);
+                        core.float()
+                    }
+                    OpType::IntCmp => {
+                        let bound = core.int_use();
+                        core.flow(lhs_ty, bound);
+                        core.flow(rhs_ty, bound);
+                        core.float()
+                    }
+                    OpType::FloatCmp => {
+                        let bound = core.float_use();
+                        core.flow(lhs_ty, bound);
+                        core.flow(rhs_ty, bound);
+                        core.bool()
+                    }
+                    OpType::AnyCmp => core.bool(),
+                }
+            }
             // we need some way to be able to discern whether this has a return or not
             Ast::Block(_) => unreachable!(),
             _ => todo!(),

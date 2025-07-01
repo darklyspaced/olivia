@@ -27,9 +27,9 @@ pub enum PTy {
     String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Value(usize);
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Use(usize);
 
 pub enum VTyConstr {

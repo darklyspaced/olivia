@@ -10,9 +10,6 @@ use crate::{error::span::Span, interner::Symbol, token::TokenKind, value::Litera
 #[derive(Debug)]
 /// The spans of higher level things are the sums of the spans of their components
 pub enum Ast {
-    Block(VecDeque<Ast>),
-    /// Identifier, then the expression being assigned to it
-    Declaration(BindIdent, Option<TyIdent>, Option<Expr>),
     /// The name of the function, the parameters to the function, block, and return type
     // TODO: technically all the names should be `BindIdent` but i cba rn
     FunDeclaration {
@@ -27,28 +24,25 @@ pub enum Ast {
     },
     ForLoop {
         decl: Box<Ast>,
-        predicate: Expr,
+        predicate: Box<Ast>,
         assignment: Box<Ast>,
         block: Box<Ast>,
     },
     If {
-        predicate: Expr,
+        predicate: Box<Ast>,
         then: Box<Ast>,
         otherwise: Option<Box<Ast>>, // this is `(Block || If)`
     },
     Application {
         name: Ident,
-        params: Vec<Expr>,
+        params: Vec<Box<Ast>>,
     },
-    Assignment(Ident, Expr),
-    Expr(Expr),
-}
-
-#[derive(Debug)]
-pub enum Expr {
-    BinOp(Op, Box<Expr>, Box<Expr>),
-    UnaryOp(Op, Box<Expr>),
-    FnInvoc(BindIdent, Option<Vec<Expr>>),
+    Block(VecDeque<Ast>),
+    Declaration(BindIdent, Option<TyIdent>, Option<Box<Ast>>),
+    Assignment(Ident, Box<Ast>),
+    BinOp(Op, Box<Ast>, Box<Ast>),
+    UnaryOp(Op, Box<Ast>),
+    FnInvoc(BindIdent, Option<Vec<Ast>>),
     Ident(BindIdent),
     Atom(Literal),
 }
@@ -158,17 +152,17 @@ impl From<TokenKind> for OpType {
     }
 }
 
-impl Display for Expr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Expr::BinOp(token_kind, er, e1) => write!(f, "({} {} {})", token_kind, er, e1),
-            Expr::UnaryOp(token_kind, e) => write!(f, "({}{})", token_kind, e),
-            Expr::Atom(ty) => write!(f, "{:?}", ty),
-            Expr::FnInvoc(ident, x) => write!(f, "{:?}({:?})", ident, x),
-            Expr::Ident(ident) => write!(f, "{:?}", ident),
-        }
-    }
-}
+// impl Display for Expr {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             Expr::BinOp(token_kind, er, e1) => write!(f, "({} {} {})", token_kind, er, e1),
+//             Expr::UnaryOp(token_kind, e) => write!(f, "({}{})", token_kind, e),
+//             Expr::Atom(ty) => write!(f, "{:?}", ty),
+//             Expr::FnInvoc(ident, x) => write!(f, "{:?}({:?})", ident, x),
+//             Expr::Ident(ident) => write!(f, "{:?}", ident),
+//         }
+//     }
+// }
 
 impl Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
