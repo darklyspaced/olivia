@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::{interner::Symbol, ty::TypeId};
+use crate::{
+    interner::Symbol,
+    ty::{Ty, TypeId},
+};
 
 /// Stores all the structs that correspond to all the environments of the program. This is stored
 /// in a spagetti tree structure that essentially functions like a stack except popping doesn't
@@ -14,11 +17,13 @@ pub struct Env {
     frame: usize,
     /// The entire parent pointer tree
     stack: Vec<Scope>,
+    // /// Where the Iterator is in relation to the stack
+    // ptr: usize,
 }
 
 #[derive(Default)]
 struct Scope {
-    data: HashMap<Symbol, TypeId>,
+    data: HashMap<Symbol, Ty>,
     parent: Option<usize>,
 }
 
@@ -28,6 +33,18 @@ impl Scope {
             data: HashMap::new(),
             parent: Some(parent),
         }
+    }
+}
+
+/// Returns `Scope`s in the order in which they were created. This is useful for walking an AST
+/// from top to bottom when doing type inference since then all the items can be processed
+/// linearly.
+impl IntoIterator for Env {
+    type Item = Scope;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.stack.into_iter()
     }
 }
 
@@ -63,11 +80,11 @@ impl Env {
         }
     }
 
-    pub fn record(&mut self, symbol: Symbol, ty: TypeId) {
+    pub fn record(&mut self, symbol: Symbol, ty: Ty) {
         self.stack[self.frame].data.insert(symbol, ty);
     }
 
-    pub fn rec_prelude(&mut self, symbol: Symbol, ty: TypeId) {
+    pub fn rec_prelude(&mut self, symbol: Symbol, ty: Ty) {
         self.prelude.data.insert(symbol, ty);
     }
 

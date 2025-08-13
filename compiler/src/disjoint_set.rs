@@ -60,7 +60,10 @@ impl DisjointSet {
     }
 
     /// Standard find algorithm that uses path splitting by replacing every pointer on this path to
-    /// a pointer to the node's grandparents. This ensures that
+    /// a pointer to the node's grandparents. This ensures that next time we want to find something
+    /// it becomes quicker and quicker!
+    ///
+    /// This takes a TypeId since we only want type variables to have representatives since other   
     pub fn find(&self, id: TypeId) -> &Elem {
         let mut curr = self.get_node(id.0);
         let parent = self.get_parent(curr);

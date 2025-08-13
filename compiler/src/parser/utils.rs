@@ -90,11 +90,12 @@ impl Parser<'_> {
         };
 
         Ok(crate::ast::Ident {
-            name: self.interner.intern(ident.lexeme),
+            sym: self.interner.intern(ident.lexeme),
             span: self.source_map.span_from_tok(&ident),
         })
     }
 
+    /// Eats `kind` otherwise throws `err`
     pub fn eat<G>(&mut self, kind: TokenKind, err: G) -> Result<Token, Error>
     where
         G: FnOnce(String) -> PEKind + Clone,

@@ -26,6 +26,9 @@ pub enum ParseErrorKind {
     ExpLBraceFound(String),
     ExpRBraceFound(String),
     ExpBlockFound(String),
+    ExpColonFound(String),
+    ExpCommaFound(String),
+    ExpTyAnnotationFound(String),
     ExpFound(Vec<TokenKind>, String),
     IdxNotInitialised,
     SolelyAssDecl,
@@ -58,7 +61,7 @@ impl ParseErrorKind {
     pub fn annotation(&self) -> String {
         match self {
             ParseErrorKind::Lexing(lex_error_kind) => lex_error_kind.annotation(),
-            ParseErrorKind::ExpExprFound(_) => String::from("expected expr here"),
+            ParseErrorKind::ExpExprFound(_) => String::from("expected expr"),
             ParseErrorKind::ExpOpFound(_) => String::from("expected op"),
             ParseErrorKind::ExpOperandFound(_) => String::from("expected operand"),
             ParseErrorKind::ExpIdentFound(_) => String::from("expected ident"),
@@ -78,7 +81,10 @@ impl ParseErrorKind {
             ParseErrorKind::ExpRParenFound(_) => String::from("expected `)`"),
             ParseErrorKind::ExpLBraceFound(_) => String::from("expected `{`"),
             ParseErrorKind::ExpRBraceFound(_) => String::from("expected `}`"),
-            ParseErrorKind::ExpBlockFound(_) => String::from("expected block"),
+            ParseErrorKind::ExpBlockFound(_) => String::from("expected block, `{}`"),
+            ParseErrorKind::ExpCommaFound(_) => String::from("expected `,`"),
+            ParseErrorKind::ExpColonFound(_) => String::from("expected `:`"),
+            ParseErrorKind::ExpTyAnnotationFound(_) => String::from("expected type annotation"),
             ParseErrorKind::IdxNotInitialised => String::from("must be initialised"),
         }
     }
@@ -116,6 +122,15 @@ impl ParseErrorKind {
             }
             ParseErrorKind::ExpRBraceFound(x) => {
                 format!("found `{x}` where `}}` was expected")
+            }
+            ParseErrorKind::ExpTyAnnotationFound(x) => {
+                format!("found `{x}` where a `: T` was expected")
+            }
+            ParseErrorKind::ExpCommaFound(x) => {
+                format!("found `{x}` where a `,` was expected")
+            }
+            ParseErrorKind::ExpColonFound(x) => {
+                format!("found `{x}` where a `:` was expected")
             }
             ParseErrorKind::ExpBlockFound(x) => {
                 format!("found `{x}` where a block was expected")

@@ -3,7 +3,7 @@ pub mod utils;
 use std::iter::Peekable;
 
 use crate::{
-    ast::{Ast, BindIdent, Expr, Ident, Op, OpKind, TyIdent},
+    ast::{Ast, Ident, Op, OpKind, OpType, Untyped},
     disjoint_set::DisjointSet,
     env::Env,
     error::{
@@ -14,14 +14,14 @@ use crate::{
     interner::{Interner, Symbol},
     lexer::Lexer,
     token::{Token, TokenKind},
-    ty::{Ty, TyConstr, TypeId},
+    ty::TypeId,
     value::Value,
 };
 
 type Error = error::Error<ParseError>;
 
 impl Iterator for Parser<'_> {
-    type Item = Result<Ast, Error>;
+    type Item = Result<Ast<Untyped>, Error>;
     /// How this function operates is dependant on `State`. If `State::Parse`, then we parse. If
     /// `State::Recover` then we must recover then change the state back to `State::Parse` and then
     /// return a token.
@@ -97,7 +97,32 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn fn_app(&mut self, ident: Ident) -> Result<Ast, Error> {
+    fn structure(&mut self) -> Result<Ast<Untyped>, Error> {
+        println!("gets to structure");
+        let _struct = self.toks.next();
+        let name = self.ident()?;
+        self.eat(TokenKind::LeftBrace, PEKind::ExpLBraceFound)?;
+        let mut fields = vec![];
+
+        while self
+            .peek(|x| PEKind::ExpFound(vec![TokenKind::Ident, TokenKind::RightBrace], x))?
+            .kind
+            != TokenKind::RightBrace
+        {
+            let field = self.ident()?;
+            self.eat(TokenKind::Colon, PEKind::ExpTyAnnotationFound)?;
+            let ty = self.ident()?;
+            self.eat(TokenKind::Comma, PEKind::ExpCommaFound)?;
+
+            fields.push((field, ty));
+        }
+
+        let _r_brace = self.toks.next();
+
+        Ok(Ast::Struct { name, fields })
+    }
+
+    fn fn_app(&mut self, ident: Ident) -> Result<Ast<Untyped>, Error> {
         let _l_paren = self.toks.next();
 
         let mut next =
@@ -109,7 +134,7 @@ impl<'de> Parser<'de> {
             loop {
                 let expr = self.expression()?;
 
-                params.push(expr);
+                params.push(Box::new(expr));
 
                 let err = |x| PEKind::ExpFound(vec![TokenKind::Comma, TokenKind::RightParen], x);
                 next = self.peek(err)?;
@@ -127,14 +152,17 @@ impl<'de> Parser<'de> {
             }
         }
 
-        Ok(Ast::Application { ident, params })
+        Ok(Ast::Application {
+            name: ident,
+            params,
+        })
     }
 
-    fn if_stmt(&mut self) -> Result<Ast, Error> {
+    fn if_stmt(&mut self) -> Result<Ast<Untyped>, Error> {
         let _if = self.toks.next();
-        let _l_paren = self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
-        let predicate = self.expression()?;
-        let _r_paren = self.eat(TokenKind::RightParen, PEKind::ExpRParenFound)?;
+        self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
+        let predicate = Box::new(self.expression()?);
+        self.eat(TokenKind::RightParen, PEKind::ExpRParenFound)?;
 
         let then = self.block()?;
 
@@ -172,11 +200,10 @@ impl<'de> Parser<'de> {
         }
     }
 
-    fn for_loop(&mut self) -> Result<Ast, Error> {
+    fn for_loop(&mut self) -> Result<Ast<Untyped>, Error> {
         self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
 
-        //let ty = TyIdent(self.ident()?); make this optional with ident: ty and match on `:`
-        let ident = BindIdent(self.ident()?);
+        let ident = self.ident()?;
         let mut ty = None;
 
         if let Some(Ok(Token {
@@ -185,7 +212,7 @@ impl<'de> Parser<'de> {
         })) = self.toks.peek()
         {
             self.toks.next();
-            ty = Some(TyIdent(self.ident()?));
+            ty = Some(self.ident()?);
         }
 
         self.eat(TokenKind::Equal, |_| PEKind::IdxNotInitialised)?;
@@ -193,7 +220,7 @@ impl<'de> Parser<'de> {
         let value = self.expression()?;
         self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
-        let predicate = self.expression()?;
+        let predicate = Box::new(self.expression()?);
         self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
         let assignment = self.assignment(false)?;
@@ -202,17 +229,17 @@ impl<'de> Parser<'de> {
         let block = self.block()?;
 
         Ok(Ast::ForLoop {
-            decl: Box::new(Ast::Declaration(ident, ty, Some(value))),
+            decl: Box::new(Ast::Declaration((ident, ty), Some(Box::new(value)))),
             predicate,
             assignment: Box::new(assignment),
             block: Box::new(block),
         })
     }
 
-    fn fn_decl(&mut self) -> Result<Ast, Error> {
+    fn fn_decl(&mut self) -> Result<Ast<Untyped>, Error> {
         let _fn = self.toks.next();
         let ident = self.ident()?;
-        let _l_paren = self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
+        self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
 
         let mut params = vec![];
 
@@ -220,13 +247,13 @@ impl<'de> Parser<'de> {
             self.peek(|x| PEKind::ExpFound(vec![TokenKind::Ident, TokenKind::RightParen], x))?;
         if next.kind != TokenKind::RightParen {
             loop {
-                let binding = BindIdent(self.ident()?);
+                let binding = self.ident()?;
 
                 let err = |x| PEKind::ExpFound(vec![TokenKind::Comma, TokenKind::RightParen], x);
                 let colon = self.peek(err)?;
                 if colon.kind == TokenKind::Colon {
                     let _colon = self.toks.next();
-                    let ty = TyIdent(self.ident()?);
+                    let ty = self.ident()?;
                     params.push((binding, Some(ty)));
                     next = self.peek(err)?;
                 } else {
@@ -251,16 +278,16 @@ impl<'de> Parser<'de> {
         let err = |x| PEKind::ExpFound(vec![TokenKind::LeftBrace, TokenKind::Arrow], x);
         let branch = self.peek(err)?;
         let ret = match branch.kind {
-            TokenKind::Arrow => Some(TyIdent(self.ident()?)),
+            TokenKind::Arrow => Some(self.ident()?),
             TokenKind::LeftBrace => None,
             _ => return Err(self.make_err(err)),
         };
 
-        let params_ty = params.iter().map(|(_, ty)| if ty.is_none() {
-            Ty::Var(TyVar(self.fresh().0))
-        } else {
-                Ty::Var(
-            })
+        // let params_ty = params.iter().map(|(_, ty)| if ty.is_none() {
+        //     Ty::Var(TyVar(self.fresh().0))
+        // } else {
+        //         Ty::Var(
+        //     })
         // self.env.record(
         //     ident,
         //     TyConstr {
@@ -272,7 +299,7 @@ impl<'de> Parser<'de> {
         let block = self.block()?;
 
         Ok(Ast::FunDeclaration {
-            ident,
+            name: ident,
             params,
             ret,
             block: Box::new(block),
@@ -283,11 +310,11 @@ impl<'de> Parser<'de> {
     fn fresh(&mut self) -> (Symbol, TypeId) {
         let constr_sym = self
             .interner
-            .intern(&format!("0x{}", self.disjoint_set.get_len()));
+            .intern(&format!("${}", self.disjoint_set.get_len()));
         (constr_sym, self.disjoint_set.fresh(constr_sym))
     }
 
-    fn block(&mut self) -> Result<Ast, Error> {
+    fn block(&mut self) -> Result<Ast<Untyped>, Error> {
         let mut stmts = vec![];
         let _l_brace = self.eat(TokenKind::LeftBrace, PEKind::ExpLParenFound)?;
 
@@ -302,8 +329,8 @@ impl<'de> Parser<'de> {
         Ok(Ast::Block(stmts.into()))
     }
 
-    /// func | var | assignment | for | if
-    fn stmt(&mut self) -> Result<Ast, Error> {
+    /// func | var | assignment | for | if | struct
+    fn stmt(&mut self) -> Result<Ast<Untyped>, Error> {
         match self
             .peek(|x| PEKind::ExpFound(vec![TokenKind::Fn, TokenKind::Let], x))?
             .kind
@@ -312,12 +339,13 @@ impl<'de> Parser<'de> {
             TokenKind::Fn => self.fn_decl(),
             TokenKind::For => self.for_loop(),
             TokenKind::If => self.if_stmt(),
+            TokenKind::Struct => self.structure(),
             _ => self.assignment(true),
         }
     }
 
     /// Parse an assignment of a value to an ident
-    fn assignment(&mut self, semi: bool) -> Result<Ast, Error> {
+    fn assignment(&mut self, semi: bool) -> Result<Ast<Untyped>, Error> {
         let ident = self.ident()?;
         let _equal = self.eat(TokenKind::Equal, PEKind::ExpEqualFound)?;
         let expr = self.expression()?;
@@ -325,13 +353,13 @@ impl<'de> Parser<'de> {
             let _semicolon = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
         }
 
-        Ok(Ast::Assignment(ident, expr))
+        Ok(Ast::Assignment(ident, Box::new(expr)))
     }
 
     /// Parse a declaration
-    fn declaration(&mut self) -> Result<Ast, Error> {
+    fn declaration(&mut self) -> Result<Ast<Untyped>, Error> {
         let _let = self.toks.next();
-        let ident = BindIdent(self.ident()?);
+        let ident = self.ident()?;
         let mut ty = None;
 
         let branch =
@@ -341,14 +369,14 @@ impl<'de> Parser<'de> {
 
         if kind == TokenKind::Colon {
             self.toks.next();
-            ty = Some(TyIdent(self.ident()?));
+            ty = Some(self.ident()?);
         }
 
         match kind {
             TokenKind::Semicolon => {
                 self.toks.next();
 
-                Ok(Ast::Declaration(ident, ty, None))
+                Ok(Ast::Declaration((ident, ty), None))
             }
             TokenKind::Equal => {
                 self.toks.next();
@@ -357,7 +385,7 @@ impl<'de> Parser<'de> {
 
                 let _semicolon = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
-                Ok(Ast::Declaration(ident, ty, Some(expr)))
+                Ok(Ast::Declaration((ident, ty), Some(Box::new(expr))))
             }
             _ => Err(self.make_err(|tok| {
                 PEKind::ExpFound(vec![TokenKind::Semicolon, TokenKind::Equal], tok)
@@ -366,7 +394,7 @@ impl<'de> Parser<'de> {
     }
 
     /// Extract an expression, handling any errors that were raised
-    fn expression(&mut self) -> Result<Expr, Error> {
+    fn expression(&mut self) -> Result<Ast<Untyped>, Error> {
         let res = self.expr(0);
         let Ok(expr) = res else {
             self.state = State::Recover;
@@ -375,14 +403,15 @@ impl<'de> Parser<'de> {
         Ok(expr)
     }
 
+    /// TODO: make everythign expressions
     /// An implementation of Pratt Parsing to deal with mathematical operations. All calls to this
     /// function from outside of itself must have `min_bp` = 0.
-    fn expr(&mut self, min_bp: u8) -> Result<Expr, Error> {
+    fn expr(&mut self, min_bp: u8) -> Result<Ast<Untyped>, Error> {
         let next = self.peek(PEKind::ExpExprFound)?;
         let mut lhs = match next.kind {
             TokenKind::Number | TokenKind::Float => {
                 let val_tok = self.toks.next().unwrap().unwrap();
-                Expr::Atom(Value {
+                Ast::Atom(Value {
                     kind: val_tok.val(),
                     span: self.source_map.span_from_tok(&val_tok),
                 })
@@ -424,8 +453,8 @@ impl<'de> Parser<'de> {
 
                         let _r_paren = self.next();
 
-                        Expr::FnInvoc(
-                            BindIdent(ident),
+                        Ast::FnInvoc(
+                            ident,
                             if params.is_empty() {
                                 None
                             } else {
@@ -433,7 +462,7 @@ impl<'de> Parser<'de> {
                             },
                         )
                     }
-                    _ => Expr::Ident(BindIdent(ident)),
+                    _ => Ast::Ident(ident),
                 }
             }
             _ => {
@@ -447,6 +476,7 @@ impl<'de> Parser<'de> {
             let Ok(op_kind) = OpKind::try_from(tok.kind) else {
                 break;
             };
+            let ty = OpType::from(tok.kind);
 
             let (l, r) = infix_binding_power(&op_kind);
             if l < min_bp {
@@ -459,11 +489,12 @@ impl<'de> Parser<'de> {
             // it
             let tok_op = self.toks.next().unwrap().unwrap();
             let op = Op {
+                ty,
                 kind: op_kind,
                 span: self.source_map.span_from_tok(&tok_op),
             };
             let rhs = self.expr(r)?;
-            lhs = Expr::BinOp(op, Box::new(lhs), Box::new(rhs))
+            lhs = Ast::BinOp(op, Box::new(lhs), Box::new(rhs))
         }
 
         Ok(lhs)

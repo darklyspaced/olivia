@@ -26,18 +26,25 @@ pub enum TokenKind {
     Semicolon,
     Comma,
     Plus,
+    PlusDot,
     Minus,
+    MinusDot,
     Arrow,
     Star,
+    StarDot,
     Dot,
     Equal,
     EqualEqual,
     Bang,
     BangEqual,
     Greater,
+    GreaterDot,
     GreaterEqual,
+    GreaterEqualDot,
     Less,
+    LessDot,
     LessEqual,
+    LessEqualDot,
     Slash,
     String,
     Number,
@@ -54,6 +61,7 @@ pub enum TokenKind {
     DoubleAmpersand,
     Ampersand,
     Colon,
+    Struct,
 }
 
 impl TokenKind {
@@ -85,6 +93,7 @@ impl TokenKind {
             TokenKind::Fn => "fn",
             TokenKind::If => "if",
             TokenKind::Else => "else",
+            TokenKind::Struct => "struct",
             tk => unimplemented!("no String repr of {}", tk),
         }
     }

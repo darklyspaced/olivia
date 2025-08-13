@@ -3,7 +3,7 @@ use std::iter;
 use strum::IntoEnumIterator;
 
 use crate::{
-    ast::{Ast, Expr, OpKind},
+    ast::{Ast, OpKind, Typed, Untyped},
     disjoint_set::{DisjointSet, Elem},
     env::Env,
     error::source_map::SourceMap,
@@ -12,8 +12,8 @@ use crate::{
     value::ValueKind,
 };
 
-struct TypedAst<'de> {
-    ast: Ast,
+struct TypeCk<'de> {
+    ast: Ast<Untyped>,
     /// The environment for the current scope
     env: Env,
     /// Keeps track of all the types and binds them as types are inferred
@@ -27,15 +27,15 @@ enum Constraint {
     Eq(Ty, Ty),
 }
 
-impl<'de> TypedAst<'de> {
+impl<'de> TypeCk<'de> {
     pub fn new(
-        ast: Ast,
+        ast: Ast<Untyped>,
         interner: &'de mut Interner,
         source_map: &'de SourceMap,
         disjoint_set: DisjointSet,
         env: Env,
     ) -> Self {
-        TypedAst {
+        TypeCk {
             ast,
             interner,
             source_map,
@@ -52,11 +52,11 @@ impl<'de> TypedAst<'de> {
     }
 
     /// Initialises a fresh type variable and gives it a generated symbol
-    fn fresh(&mut self) -> (Symbol, TypeId) {
+    fn fresh(&mut self) -> (Symbol, Ty) {
         let constr_sym = self
             .interner
-            .intern(&format!("0x{}", self.disjoint_set.get_len()));
-        (constr_sym, self.disjoint_set.fresh(constr_sym))
+            .intern(&format!("${}", self.disjoint_set.get_len()));
+        (constr_sym, Ty::Var(self.disjoint_set.fresh(constr_sym)))
     }
 
     /// Create all the type constructors that should already exist for
@@ -122,90 +122,93 @@ impl<'de> TypedAst<'de> {
         }
     }
 
-    /// Type checks and annotates a specific Ast with types, returning any conflicts discovered. It
-    /// takes in an expected type to improve errors message and so forth. This ends up being a
-    /// variation of constraint solving based Hindley-Milner that is bidirectional
-    pub fn type_ck(&mut self) {}
-
-    pub fn check() {}
-
-    pub fn infer(&mut self, ast: Ast, expected: Ty) -> TypeId {
+    /// Returns an Ast with all the type annotations filled in.
+    /// TODO: Need some way to code this into the AST itself. Potentially parameterise it based on
+    /// that
+    pub fn infer(&mut self, ast: Ast<Untyped>, expected: Ty) -> Ast<Typed> {
         match ast {
-            Ast::Declaration(ident, ty, expr) => match expr {
+            Ast::Declaration(xvar, expr) => match expr {
                 Some(expr) => {
-                    let ty = match ty {
-                        Some(t) => todo!(),
-                        None => self.infer(Ast::Expr(expr), expected),
+                    let ty = match xvar.1 {
+                        Some(t) => todo!(
+                            "create an equality between this variable and the type that it was given"
+                        ),
+                        None => self.infer(*expr, expected),
                     };
-                    self.env.record(ident.0.name, ty);
+                    self.env.record(xvar.0.sym, ty);
                     ty
                 }
                 None => {
                     let (_, ty) = self.fresh();
-                    self.env.record(ident.0.name, ty);
+                    self.env.record(xvar.0.sym, ty);
                     ty
                 }
             },
-            Ast::Expr(expr) => match expr {
-                Expr::BinOp(op, expr, expr1) => {
-                    // let sym = self.interner.intern(&op.to_string());
-                    // let app_ty = self.env.get(&sym);
-                    // let (t1, t2) = (self.infer(Ast::Expr(*expr)), self.infer(Ast::Expr(*expr1)));
-                    // let ret = self.fresh();
-                    todo!()
-                }
-                Expr::Ident(var) => {
-                    let ty = self.env.get(&var.0.name).expect(&format!(
-                        "attempted to access {:?} which doesn't exist",
-                        var.0.name
-                    ));
+            Ast::BinOp(op, expr, expr1) => {
+                // let sym = self.interner.intern(&op.to_string());
+                // let app_ty = self.env.get(&sym);
+                // let (t1, t2) = (self.infer(Ast::Ast(*expr)), self.infer(Ast::Expr(*expr1)));
+                // let ret = self.fresh();
+                todo!()
+            }
+            Ast::Ident(var) => {
+                let ty = self.env.get(&var.0.sym).expect(&format!(
+                    "attempted to access {:?} which doesn't exist. name resolution should have caught this already",
+                    var.0.sym
+                ));
+                self.constraints
+                    .push(Constraint::Eq(Ty::Var(TyVar(var.0.sym)), expected));
+                todo!()
+            }
+            Ast::FnInvoc(ident, params) => {
+                // fresh ty variables with return type as expected var
+                let params_tys = params
+                    .unwrap_or(vec![])
+                    .iter()
+                    .map(|_| Ty::Var(TyVar(self.fresh().0)))
+                    .chain(iter::once(expected))
+                    .collect::<Vec<Ty>>();
+
+                let fn_ty = Ty::Constr(TyConstr {
+                    name: ident.0.sym,
+                    params: params_tys,
+                });
+
+                // saying here that we want the type of this blank function to be the one
+                // associated with the `ident` (hence to match the declaration). Essentially,
+                // we are binding all fresh type variables to what they should be, based on the
+                // declaration
+
+                // TODO: this should be replaced with a check as we are checking that it
+                // matches this type
+                let inferred_fn = self.infer(Ast::Ident(ident), fn_ty);
+
+                // TODO: need to construct the environment during parse time so that all the
+                // function types can be constructed then this environment needs to be passed
+                // to the type checker which
+
+                todo!()
+            }
+            Ast::Atom(val) => match val.kind {
+                ValueKind::Integer(i) => {
                     self.constraints
-                        .push(Constraint::Eq(Ty::Var(TyVar(var.0.name)), expected));
-                    todo!()
+                        .push(Constraint::Eq(expected, Ty::Var(self.get_tyvar(PTy::Int))));
+                    Ast::Atom(val)
                 }
-                Expr::FnInvoc(ident, params) => {
-                    // fresh ty variables with return type as expected var
-                    let params_tys = params
-                        .unwrap_or(vec![])
-                        .iter()
-                        .map(|_| Ty::Var(TyVar(self.fresh().0)))
-                        .chain(iter::once(expected))
-                        .collect::<Vec<Ty>>();
-
-                    let fn_ty = Ty::Constr(TyConstr {
-                        name: ident.0.name,
-                        params: params_tys,
-                    });
-
-                    // saying here that we want the type of this blank function to be the one
-                    // associated with the `ident` (hence to match the declaration). Essentially,
-                    // we are binding all fresh type variables to what they should be, based on the
-                    // declaration
-
-                    // TODO: this should be replaced with a check as we are checking that it
-                    // matches this type
-                    let inferred_fn = self.infer(Ast::Expr(Expr::Ident(ident)), fn_ty);
-
-                    // TODO: need to construct the environment during parse time so that all the
-                    // function types can be constructed then this environment needs to be passed
-                    // to the type checker which
-
-                    todo!()
+                ValueKind::Float(f) => {
+                    self.constraints.push(Constraint::Eq(
+                        expected,
+                        Ty::Var(self.get_tyvar(PTy::Float)),
+                    ));
+                    Ast::Atom(val)
                 }
-                Expr::Atom(val) => match val.kind {
-                    ValueKind::Integer(i) => {
-                        self.constraints.push(Constraint::Eq((), ()));
-                    }
-                    ValueKind::Float(f) => {}
-                },
-                _ => todo!(),
             },
             Ast::Block(_) => unreachable!(),
             _ => todo!(),
         }
     }
 
-    /// Returns the representative of a `Symbol` in the current `Env`
+    // /// Returns the representative of a `Symbol` in the current `Env`
     fn get_representative(&self, sym: Symbol) -> &Elem {
         let itself = self.env.get(&sym).unwrap();
         self.disjoint_set.find(*itself)
