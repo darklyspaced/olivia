@@ -3,7 +3,7 @@ pub mod utils;
 use std::iter::Peekable;
 
 use crate::{
-    ast::{Ast, Ident, Op, OpKind, OpType, Untyped},
+    ast::{Ast, AstId, Ident, InnerAst, Op, OpKind, OpType, Untyped},
     disjoint_set::DisjointSet,
     env::Env,
     error::{
@@ -11,17 +11,17 @@ use crate::{
         parse_err::{ParseError, ParseErrorKind as PEKind},
         source_map::SourceMap,
     },
-    interner::{Interner, Symbol},
+    interner::Interner,
     lexer::Lexer,
     token::{Token, TokenKind},
-    ty::TypeId,
     value::Value,
 };
 
 type Error = error::Error<ParseError>;
 
 impl Iterator for Parser<'_> {
-    type Item = Result<Ast<Untyped>, Error>;
+    /// At this point, there are no & `Ast` so the lifetime can be static since it's `Untyped`
+    type Item = Result<Ast<'static, Untyped>, Error>;
     /// How this function operates is dependant on `State`. If `State::Parse`, then we parse. If
     /// `State::Recover` then we must recover then change the state back to `State::Parse` and then
     /// return a token.
@@ -83,6 +83,7 @@ pub struct Parser<'de> {
     toks: Peekable<Lexer<'de>>,
     disjoint_set: DisjointSet,
     env: Env,
+    ids: usize,
 }
 
 impl<'de> Parser<'de> {
@@ -94,11 +95,11 @@ impl<'de> Parser<'de> {
             disjoint_set: DisjointSet::default(),
             source_map,
             interner,
+            ids: 0,
         }
     }
 
-    fn structure(&mut self) -> Result<Ast<Untyped>, Error> {
-        println!("gets to structure");
+    fn structure(&mut self) -> Result<Ast<'static, Untyped>, Error> {
         let _struct = self.toks.next();
         let name = self.ident()?;
         self.eat(TokenKind::LeftBrace, PEKind::ExpLBraceFound)?;
@@ -122,7 +123,7 @@ impl<'de> Parser<'de> {
         Ok(Ast::Struct { name, fields })
     }
 
-    fn fn_app(&mut self, ident: Ident) -> Result<Ast<Untyped>, Error> {
+    fn fn_app(&mut self, ident: Ident) -> Result<Ast<'static, Untyped>, Error> {
         let _l_paren = self.toks.next();
 
         let mut next =
@@ -134,7 +135,7 @@ impl<'de> Parser<'de> {
             loop {
                 let expr = self.expression()?;
 
-                params.push(Box::new(expr));
+                params.push(self.tag(expr));
 
                 let err = |x| PEKind::ExpFound(vec![TokenKind::Comma, TokenKind::RightParen], x);
                 next = self.peek(err)?;
@@ -158,10 +159,10 @@ impl<'de> Parser<'de> {
         })
     }
 
-    fn if_stmt(&mut self) -> Result<Ast<Untyped>, Error> {
+    fn if_stmt(&mut self) -> Result<Ast<'static, Untyped>, Error> {
         let _if = self.toks.next();
         self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
-        let predicate = Box::new(self.expression()?);
+        let predicate = self.expression()?;
         self.eat(TokenKind::RightParen, PEKind::ExpRParenFound)?;
 
         let then = self.block()?;
@@ -179,28 +180,28 @@ impl<'de> Parser<'de> {
             {
                 let if_stmt = self.if_stmt()?;
                 Ok(Ast::If {
-                    predicate,
-                    then: Box::new(then),
-                    otherwise: Some(Box::new(if_stmt)),
+                    predicate: self.tag(predicate),
+                    then: self.tag(then),
+                    otherwise: Some(self.tag(if_stmt)),
                 })
             } else {
                 let block = self.block()?;
                 Ok(Ast::If {
-                    predicate,
-                    then: Box::new(then),
-                    otherwise: Some(Box::new(block)),
+                    predicate: self.tag(predicate),
+                    then: self.tag(then),
+                    otherwise: Some(self.tag(block)),
                 })
             }
         } else {
             Ok(Ast::If {
-                predicate,
-                then: Box::new(then),
+                predicate: self.tag(predicate),
+                then: self.tag(then),
                 otherwise: None,
             })
         }
     }
 
-    fn for_loop(&mut self) -> Result<Ast<Untyped>, Error> {
+    fn for_loop(&mut self) -> Result<Ast<'static, Untyped>, Error> {
         self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
 
         let ident = self.ident()?;
@@ -220,7 +221,8 @@ impl<'de> Parser<'de> {
         let value = self.expression()?;
         self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
-        let predicate = Box::new(self.expression()?);
+        let expr = self.expression()?;
+        let predicate = self.tag(expr);
         self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
         let assignment = self.assignment(false)?;
@@ -228,15 +230,16 @@ impl<'de> Parser<'de> {
         self.eat(TokenKind::RightParen, PEKind::ExpRParenFound)?;
         let block = self.block()?;
 
+        let val = self.tag(value);
         Ok(Ast::ForLoop {
-            decl: Box::new(Ast::Declaration((ident, ty), Some(Box::new(value)))),
+            decl: self.tag(Ast::Declaration((ident, ty), Some(val))),
             predicate,
-            assignment: Box::new(assignment),
-            block: Box::new(block),
+            assignment: self.tag(assignment),
+            block: self.tag(block),
         })
     }
 
-    fn fn_decl(&mut self) -> Result<Ast<Untyped>, Error> {
+    fn fn_decl(&mut self) -> Result<Ast<'static, Untyped>, Error> {
         let _fn = self.toks.next();
         let ident = self.ident()?;
         self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
@@ -302,25 +305,33 @@ impl<'de> Parser<'de> {
             name: ident,
             params,
             ret,
-            block: Box::new(block),
+            block: self.tag(block),
         })
     }
 
-    /// Initialises a fresh type variable and gives it a generated symbol
-    fn fresh(&mut self) -> (Symbol, TypeId) {
-        let constr_sym = self
-            .interner
-            .intern(&format!("${}", self.disjoint_set.get_len()));
-        (constr_sym, self.disjoint_set.fresh(constr_sym))
-    }
+    // /// Initialises a fresh type variable and gives it a generated symbol
+    // fn fresh(&mut self) -> (Symbol, TypeId) {
+    //     let constr_sym = self
+    //         .interner
+    //         .intern(&format!("${}", self.disjoint_set.get_len()));
+    //     (constr_sym, self.disjoint_set.fresh(constr_sym))
+    // }
 
-    fn block(&mut self) -> Result<Ast<Untyped>, Error> {
+    fn block(&mut self) -> Result<Ast<'static, Untyped>, Error> {
         let mut stmts = vec![];
         let _l_brace = self.eat(TokenKind::LeftBrace, PEKind::ExpLParenFound)?;
 
         let mut next = self.peek(PEKind::ExpLBraceFound)?;
         while next.kind != TokenKind::RightBrace {
-            stmts.push(self.stmt()?);
+            let stmt = self.stmt()?;
+
+            self.ids += 1;
+            let inner = InnerAst {
+                inner: stmt,
+                id: AstId(self.ids),
+            };
+
+            stmts.push(inner);
             next = self.peek(PEKind::ExpRBraceFound)?;
         }
 
@@ -330,7 +341,7 @@ impl<'de> Parser<'de> {
     }
 
     /// func | var | assignment | for | if | struct
-    fn stmt(&mut self) -> Result<Ast<Untyped>, Error> {
+    fn stmt(&mut self) -> Result<Ast<'static, Untyped>, Error> {
         match self
             .peek(|x| PEKind::ExpFound(vec![TokenKind::Fn, TokenKind::Let], x))?
             .kind
@@ -345,7 +356,7 @@ impl<'de> Parser<'de> {
     }
 
     /// Parse an assignment of a value to an ident
-    fn assignment(&mut self, semi: bool) -> Result<Ast<Untyped>, Error> {
+    fn assignment(&mut self, semi: bool) -> Result<Ast<'static, Untyped>, Error> {
         let ident = self.ident()?;
         let _equal = self.eat(TokenKind::Equal, PEKind::ExpEqualFound)?;
         let expr = self.expression()?;
@@ -353,11 +364,11 @@ impl<'de> Parser<'de> {
             let _semicolon = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
         }
 
-        Ok(Ast::Assignment(ident, Box::new(expr)))
+        Ok(Ast::Assignment(ident, self.tag(expr)))
     }
 
     /// Parse a declaration
-    fn declaration(&mut self) -> Result<Ast<Untyped>, Error> {
+    fn declaration(&mut self) -> Result<Ast<'static, Untyped>, Error> {
         let _let = self.toks.next();
         let ident = self.ident()?;
         let mut ty = None;
@@ -385,7 +396,7 @@ impl<'de> Parser<'de> {
 
                 let _semicolon = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
-                Ok(Ast::Declaration((ident, ty), Some(Box::new(expr))))
+                Ok(Ast::Declaration((ident, ty), Some(self.tag(expr))))
             }
             _ => Err(self.make_err(|tok| {
                 PEKind::ExpFound(vec![TokenKind::Semicolon, TokenKind::Equal], tok)
@@ -394,7 +405,7 @@ impl<'de> Parser<'de> {
     }
 
     /// Extract an expression, handling any errors that were raised
-    fn expression(&mut self) -> Result<Ast<Untyped>, Error> {
+    fn expression(&mut self) -> Result<Ast<'static, Untyped>, Error> {
         let res = self.expr(0);
         let Ok(expr) = res else {
             self.state = State::Recover;
@@ -406,7 +417,7 @@ impl<'de> Parser<'de> {
     /// TODO: make everythign expressions
     /// An implementation of Pratt Parsing to deal with mathematical operations. All calls to this
     /// function from outside of itself must have `min_bp` = 0.
-    fn expr(&mut self, min_bp: u8) -> Result<Ast<Untyped>, Error> {
+    fn expr(&mut self, min_bp: u8) -> Result<Ast<'static, Untyped>, Error> {
         let next = self.peek(PEKind::ExpExprFound)?;
         let mut lhs = match next.kind {
             TokenKind::Number | TokenKind::Float => {
@@ -428,7 +439,12 @@ impl<'de> Parser<'de> {
                         let mut next = dbg!(self.peek(PEKind::ExpExprFound)?);
                         if next.kind != TokenKind::RightParen {
                             loop {
-                                params.push(self.expression()?);
+                                self.ids += 1;
+                                let inner = InnerAst {
+                                    inner: self.expression()?,
+                                    id: AstId(self.ids),
+                                };
+                                params.push(inner);
 
                                 let err = |x| {
                                     PEKind::ExpFound(
@@ -494,7 +510,7 @@ impl<'de> Parser<'de> {
                 span: self.source_map.span_from_tok(&tok_op),
             };
             let rhs = self.expr(r)?;
-            lhs = Ast::BinOp(op, Box::new(lhs), Box::new(rhs))
+            lhs = Ast::BinOp(op, self.tag(lhs), self.tag(rhs))
         }
 
         Ok(lhs)

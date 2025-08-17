@@ -1,7 +1,7 @@
 use super::{Parser, State};
 
 use crate::{
-    ast::Ident,
+    ast::{Ast, AstId, Ident, InnerAst, Itself, Untyped},
     error::{
         self,
         lex_err::LexErrorKind,
@@ -39,7 +39,10 @@ macro_rules! error {
 
 impl Parser<'_> {
     /// Peeks the next token and handles error cases. `err_kind` is for the EOF case
-    pub fn peek(&mut self, eof_err: impl FnOnce(String) -> PEKind) -> Result<&Token, Error> {
+    pub(super) fn peek(
+        &mut self,
+        eof_err: impl FnOnce(String) -> PEKind,
+    ) -> Result<&Token<'_>, Error> {
         if let Some(Err(e)) = self.toks.peek() {
             let kind = e.kind();
             self.state = match kind {
@@ -82,7 +85,7 @@ impl Parser<'_> {
 
     /// Attempts to parse an ident and interns its symbol, returning any errors generated along
     /// the way
-    pub fn ident(&mut self) -> Result<Ident, Error> {
+    pub(super) fn ident(&mut self) -> Result<Ident, Error> {
         let next = self.peek(PEKind::ExpIdentFound)?;
         let ident = match next.kind {
             TokenKind::Ident => self.toks.next().unwrap().unwrap(),
@@ -96,7 +99,7 @@ impl Parser<'_> {
     }
 
     /// Eats `kind` otherwise throws `err`
-    pub fn eat<G>(&mut self, kind: TokenKind, err: G) -> Result<Token, Error>
+    pub(super) fn eat<G>(&mut self, kind: TokenKind, err: G) -> Result<Token<'_>, Error>
     where
         G: FnOnce(String) -> PEKind + Clone,
     {
@@ -107,5 +110,14 @@ impl Parser<'_> {
             return Err(self.make_err(err));
         };
         Ok(tok)
+    }
+
+    /// Tags an `Ast` with its `AstId` and then boxes it
+    pub(super) fn tag(&mut self, ast: Ast<'static, Untyped>) -> Itself<'static, Untyped> {
+        self.ids += 1;
+        Box::new(InnerAst {
+            inner: ast,
+            id: AstId(self.ids),
+        })
     }
 }

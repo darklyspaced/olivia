@@ -4,9 +4,9 @@ use crate::{
 };
 /// Provides an implementation of a Visitor pattern so that other things have a standard way of
 /// walking the AST. However this
-pub trait Visitor {
+pub trait Visitor<'ast> {
     type P: Pass;
-    fn walk(&mut self, ast: InnerAst<Self::P>) {
+    fn walk(&mut self, ast: InnerAst<'ast, Self::P>) {
         match ast.inner {
             Ast::FunDeclaration {
                 name,
@@ -95,16 +95,16 @@ pub trait Visitor {
     fn visit_fun_declaration(
         &mut self,
         name: &Ident,
-        params: &[<Self::P as Pass>::XArg],
-        ret: &<Self::P as Pass>::XRet,
+        params: &[<Self::P as Pass>::XArg<'_>],
+        ret: &<Self::P as Pass>::XRet<'ast>,
         id: AstId,
     );
-    fn visit_struct(&mut self, name: &Ident, fields: &[(Ident, <Self::P as Pass>::XTy)]);
+    fn visit_struct(&mut self, name: &Ident, fields: &[(Ident, <Self::P as Pass>::XTy<'ast>)]);
     fn visit_for_loop(&mut self);
     fn visit_if(&mut self);
     fn visit_application(&mut self, name: &Ident);
     fn visit_block(&mut self);
-    fn visit_declaration(&mut self, var: &<Self::P as Pass>::XVar);
+    fn visit_declaration(&mut self, var: &<Self::P as Pass>::XVar<'ast>);
     fn visit_assignment(&mut self, ident: &Ident);
     fn visit_bin_op(&mut self, op: &Op);
     fn visit_unary_op(&mut self, op: &Op);

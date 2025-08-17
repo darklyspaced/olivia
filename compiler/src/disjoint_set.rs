@@ -36,15 +36,16 @@ pub struct Elem {
 }
 
 impl DisjointSet {
-    pub fn fresh(&mut self, name: Symbol) -> TypeId {
+    pub fn fresh(&mut self, name: Symbol) -> &Ty {
         let id = self.forest.len();
+        let tyid = TypeId(id);
         self.forest.push(Elem {
             rank: Cell::new(0),
-            ty: Ty::Var(TyVar(name)),
+            ty: Ty::Var(name, tyid),
             parent: Cell::new(id),
             id,
         });
-        TypeId(id)
+        &self.forest[self.forest.len() - 1].ty
     }
 
     /// Adds a new type that is known with the given name

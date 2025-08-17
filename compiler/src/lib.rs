@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables)]
 #![feature(assert_matches)]
 
 pub mod ast;

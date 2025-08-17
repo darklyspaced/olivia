@@ -8,10 +8,10 @@ use strum::EnumIter;
 use crate::{error::span::Span, interner::Symbol, token::TokenKind, ty::Ty, value::Value};
 
 pub trait Pass {
-    type XArg;
-    type XRet;
-    type XVar;
-    type XTy;
+    type XArg<'ast>: Debug;
+    type XRet<'ast>: Debug;
+    type XVar<'ast>: Debug;
+    type XTy<'ast>: Debug;
 }
 
 #[derive(Debug)]
@@ -23,73 +23,78 @@ pub struct Typed;
 
 /// Initial state of the
 impl Pass for Untyped {
-    type XArg = (Ident, Option<Ident>);
-    type XRet = Option<Ident>;
-    type XVar = (Ident, Option<Ident>);
-    type XTy = Ident;
+    type XArg<'ast> = (Ident, Option<Ident>);
+    type XRet<'ast> = Option<Ident>;
+    type XVar<'ast> = (Ident, Option<Ident>);
+    type XTy<'ast> = Ident;
 }
 
 /// All the provided types have been resolved (name resolution) + defined in the type system and
 /// they aren't `TyIdent`s but `Ty`s now.
 impl Pass for Annotated {
-    type XArg = (Ident, Option<Ty>);
-    type XRet = Option<Ty>;
-    type XVar = (Ident, Option<Ty>);
-    type XTy = Ty;
+    type XArg<'ast> = (Ident, Option<&'ast Ty>);
+    type XRet<'ast> = Option<&'ast Ty>;
+    type XVar<'ast> = (Ident, Option<&'ast Ty>);
+    type XTy<'ast> = &'ast Ty;
 }
 
 impl Pass for Typed {
-    type XArg = (Ident, Ty);
-    type XRet = Ty;
-    type XVar = (Ident, Ty);
-    type XTy = Ty;
+    type XArg<'ast> = (Ident, &'ast Ty);
+    type XRet<'ast> = &'ast Ty;
+    type XVar<'ast> = (Ident, &'ast Ty);
+    type XTy<'ast> = &'ast Ty;
 }
 
+pub type Itself<'ast, P> = Box<InnerAst<'ast, P>>;
+
 /// The spans of higher level things are the sums of the spans of their components
-pub enum Ast<P: Pass> {
+#[derive(Debug)]
+pub enum Ast<'ast, P: Pass> {
     /// The name of the function, the parameters to the function, block, and return type
     // TODO: technically all the names should be `BindIdent` but i cba rn
     FunDeclaration {
         name: Ident,
         // params: Vec<(BindIdent, Option<TyIdent>)>,
-        params: Vec<P::XArg>,
+        params: Vec<P::XArg<'ast>>,
         // ret: Option<TyIdent>,
-        ret: P::XRet,
-        block: Box<InnerAst<P>>,
+        ret: P::XRet<'ast>,
+        block: Itself<'ast, P>,
     },
     Struct {
         name: Ident,
-        fields: Vec<(Ident, P::XTy)>,
+        fields: Vec<(Ident, P::XTy<'ast>)>,
     },
     ForLoop {
-        decl: Box<InnerAst<P>>,
-        predicate: Box<InnerAst<P>>,
-        assignment: Box<InnerAst<P>>,
-        block: Box<InnerAst<P>>,
+        decl: Itself<'ast, P>,
+        predicate: Itself<'ast, P>,
+        assignment: Itself<'ast, P>,
+        block: Itself<'ast, P>,
     },
     If {
-        predicate: Box<InnerAst<P>>,
-        then: Box<InnerAst<P>>,
-        otherwise: Option<Box<InnerAst<P>>>, // this is `(Block || If)`
+        predicate: Itself<'ast, P>,
+        then: Itself<'ast, P>,
+        otherwise: Option<Itself<'ast, P>>, // this is `(Block || If)`
     },
     Application {
         name: Ident,
-        params: Vec<Box<InnerAst<P>>>,
+        params: Vec<Itself<'ast, P>>,
     },
-    Block(VecDeque<InnerAst<P>>),
-    Declaration(P::XVar, Option<Box<InnerAst<P>>>),
-    Assignment(Ident, Box<InnerAst<P>>),
-    BinOp(Op, Box<InnerAst<P>>, Box<InnerAst<P>>),
-    UnaryOp(Op, Box<InnerAst<P>>),
-    FnInvoc(Ident, Option<Vec<InnerAst<P>>>),
+    Block(VecDeque<InnerAst<'ast, P>>),
+    Declaration(P::XVar<'ast>, Option<Itself<'ast, P>>),
+    Assignment(Ident, Itself<'ast, P>),
+    BinOp(Op, Itself<'ast, P>, Itself<'ast, P>),
+    UnaryOp(Op, Itself<'ast, P>),
+    FnInvoc(Ident, Option<Vec<InnerAst<'ast, P>>>),
     Ident(Ident),
     Atom(Value),
 }
 
+#[derive(Debug)]
 pub struct AstId(pub usize);
 
-pub struct InnerAst<P: Pass> {
-    pub inner: Ast<P>,
+#[derive(Debug)]
+pub struct InnerAst<'ast, P: Pass> {
+    pub inner: Ast<'ast, P>,
     pub id: AstId,
 }
 

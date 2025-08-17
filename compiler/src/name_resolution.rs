@@ -1,5 +1,6 @@
 use crate::{
-    ast::{Ast, AstId, BindIdent, Ident, Op, Pass, TyIdent, Untyped, Value},
+    ast::{AstId, Ident, Op, Pass, Untyped},
+    disjoint_set::DisjointSet,
     env::Env,
     interner::Interner,
     ty::Ty,
@@ -9,24 +10,49 @@ use crate::{
 struct NameResolution<'de> {
     env: Env,
     interner: &'de mut Interner,
+    disjoint_set: DisjointSet,
 }
 
-impl Visitor for NameResolution<'_> {
+impl NameResolution<'_> {
+    // fn fresh(&mut self) -> (Symbol, TypeId) {
+    //     let constr_sym = self
+    //         .interner
+    //         .intern(&format!("${}", self.disjoint_set.get_len()));
+    //     (constr_sym, self.disjoint_set.fresh(constr_sym))
+    // }
+}
+
+impl<'ast> Visitor<'ast> for NameResolution<'_> {
     type P = Untyped;
 
     fn visit_fun_declaration(
         &mut self,
         name: &Ident,
-        params: &[<Self::P as Pass>::XArg],
-        ret: &<Self::P as Pass>::XRet,
+        params: &[<Self::P as Pass>::XArg<'ast>],
+        ret: &<Self::P as Pass>::XRet<'ast>,
         id: AstId,
     ) {
+        todo!();
         // name is registered in env
-        params.iter().map(||);
-        self.env.record(name.sym, Ty::Fn((), ()))
+        params.iter().map(|(name, ty)| match ty {
+            Some(t) => {
+                // TODO: this absolutely should not be creating new types out of thin air??
+                let ty = match self.env.get(&name.sym) {
+                    Some(ty) => &self.disjoint_set.find(ty).ty,
+                    None => {
+                        let ty = self.disjoint_set.fresh(name.sym);
+                        let Ty::Var(_, id) = ty else { unreachable!() };
+                        self.env.record(name.sym, *id);
+                        ty
+                    }
+                };
+            }
+            None => {}
+        });
+        // self.env.record(name.sym, Ty::Fn((), ()))
     }
 
-    fn visit_struct(&mut self, name: &Ident, fields: &[(Ident, <Self::P as Pass>::XTy)]) {
+    fn visit_struct(&mut self, name: &Ident, fields: &[(Ident, <Self::P as Pass>::XTy<'ast>)]) {
         todo!()
     }
 
@@ -46,7 +72,7 @@ impl Visitor for NameResolution<'_> {
         todo!()
     }
 
-    fn visit_declaration(&mut self, var: &<Self::P as Pass>::XVar) {
+    fn visit_declaration(&mut self, var: &<Self::P as Pass>::XVar<'ast>) {
         todo!()
     }
 

@@ -1,15 +1,18 @@
 use std::collections::HashMap;
 
-use crate::{
-    interner::Symbol,
-    ty::{Ty, TypeId},
-};
+use crate::{interner::Symbol, ty::TypeId};
+
+/// A tree that respresents the namespace structure of a project. Each namespace has it's own Env
+pub struct Namespace {
+    name: Symbol,
+    env: Env,
+    children: Vec<Namespace>,
+}
 
 /// Stores all the structs that correspond to all the environments of the program. This is stored
 /// in a spagetti tree structure that essentially functions like a stack except popping doesn't
 /// actually pop so that all the symbols are kept in perpituity and not lost when the pointer
 /// traverses the stack.
-#[derive(Default)]
 pub struct Env {
     /// Prelude of all the defined types (mostly for type checking purposes)
     prelude: Scope,
@@ -17,13 +20,15 @@ pub struct Env {
     frame: usize,
     /// The entire parent pointer tree
     stack: Vec<Scope>,
-    // /// Where the Iterator is in relation to the stack
-    // ptr: usize,
 }
 
+/// Relates `Symbol`s to `TypeId`s. These `TypeId`s can then be converted into `Ty`s via the
+/// `DisjoinSet` that will convert it intos it's canonical form. We wouldn't want to store `Ty`s
+/// directly here since their canonical form will change throughout type inference so we want to
+/// refer to `DisjoinSet` so we always have the most up to date version.
 #[derive(Default)]
-struct Scope {
-    data: HashMap<Symbol, Ty>,
+pub struct Scope {
+    data: HashMap<Symbol, TypeId>,
     parent: Option<usize>,
 }
 
@@ -80,29 +85,44 @@ impl Env {
         }
     }
 
-    pub fn record(&mut self, symbol: Symbol, ty: Ty) {
+    pub fn record(&mut self, symbol: Symbol, ty: TypeId) {
         self.stack[self.frame].data.insert(symbol, ty);
     }
 
-    pub fn rec_prelude(&mut self, symbol: Symbol, ty: Ty) {
+    pub fn rec_prelude(&mut self, symbol: Symbol, ty: TypeId) {
         self.prelude.data.insert(symbol, ty);
     }
 
-    pub fn get(&self, symbol: &Symbol) -> Option<&TypeId> {
+    /// Inserts
+    pub fn get_or_insert(&mut self, symbol: Symbol, ty: TypeId) -> TypeId {
+        match self.get(&symbol) {
+            Some(t) => t,
+            None => {
+                self.record(symbol, ty);
+                ty
+            }
+        }
+    }
+
+    pub fn get(&self, symbol: &Symbol) -> Option<TypeId> {
         match self.prelude.data.get(symbol) {
             None => {
                 let mut curr = &self.stack[self.frame];
-                while curr.data.get(symbol).is_none() {
+                while !curr.data.contains_key(symbol) {
                     match curr.parent {
                         Some(p) => curr = &self.stack[p],
-                        None => panic!(
-                            "this should be an error saying that symbol is not declared / DNE in scope",
-                        ),
+                        None => return None,
                     }
                 }
-                self.stack[self.frame].data.get(symbol)
+                self.stack[self.frame].data.get(symbol).copied()
             }
-            x => x,
+            x => x.copied(),
         }
+    }
+}
+
+impl Default for Env {
+    fn default() -> Self {
+        Self::new()
     }
 }
