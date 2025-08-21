@@ -1,19 +1,14 @@
-use std::iter;
-
-use strum::IntoEnumIterator;
-
 use crate::{
-    ast::{Ast, OpKind, Typed, Untyped},
-    disjoint_set::{DisjointSet, Elem},
+    ast::{Ast, Untyped},
+    disjoint_set::DisjointSet,
     env::Env,
     error::source_map::SourceMap,
-    interner::{Interner, Symbol},
-    ty::{PTy, Ty, TyConstr, TyVar, TypeId},
-    value::ValueKind,
+    interner::Interner,
+    ty::{PTy, Ty, TypeId},
 };
 
-struct TypeCk<'ast, 'de> {
-    ast: Ast<'ast, Untyped>,
+struct TypeCk<'de> {
+    ast: Ast<Untyped>,
     /// The environment for the current scope
     env: Env,
     /// Keeps track of all the types and binds them as types are inferred
@@ -27,9 +22,9 @@ enum Constraint {
     Eq(Ty, Ty),
 }
 
-impl<'ast, 'de> TypeCk<'ast, 'de> {
+impl<'de> TypeCk<'de> {
     pub fn new(
-        ast: Ast<'ast, Untyped>,
+        ast: Ast<Untyped>,
         interner: &'de mut Interner,
         source_map: &'de SourceMap,
         disjoint_set: DisjointSet,
@@ -54,80 +49,80 @@ impl<'ast, 'de> TypeCk<'ast, 'de> {
             .expect(&format!("primitive {} not defined?!", name))
     }
 
-    /// Initialises a fresh type variable and gives it a generated symbol
-    fn fresh(&mut self) -> (Symbol, TypeId) {
-        let constr_sym = self
-            .interner
-            .intern(&format!("${}", self.disjoint_set.get_len()));
-        let Ty::Var(_, id) = self.disjoint_set.fresh(constr_sym) else {
-            unreachable!()
-        };
-        (constr_sym, *id)
-    }
+    // /// Initialises a fresh type variable and gives it a generated symbol
+    // fn fresh(&mut self) -> (Symbol, TypeId) {
+    //     let constr_sym = self
+    //         .interner
+    //         .intern(&format!("${}", self.disjoint_set.get_len()));
+    //     let Ty::Var(_, id) = self.disjoint_set.fresh(constr_sym) else {
+    //         unreachable!()
+    //     };
+    //     (constr_sym, *id)
+    // }
 
-    /// Create all the type constructors that should already exist for
-    /// 1. Predefined operators (+, &&, <, etc.)
-    /// 2. Primitive types (Int, Bool, etc)
-    /// and add them to the prelude.
-    fn init_tyconsts(&mut self) {
-        for elem in PTy::iter() {
-            let sym = self.interner.intern(&elem.to_string());
-            let (_, id) = self.fresh();
-            self.env.rec_prelude(sym, id);
-        }
-
-        for elem in OpKind::iter() {
-            let sym = self.interner.intern(&elem.to_string());
-
-            let func = match elem {
-                OpKind::And | OpKind::Or => {
-                    let bool = self.get_pty_id(PTy::Bool);
-                    vec![TyConstr {
-                        name: sym,
-                        params: vec![bool; 3],
-                    }]
-                }
-                OpKind::Greater | OpKind::GreaterEqual | OpKind::Less | OpKind::LessEqual => {
-                    let (int, bool) = (self.get_pty_id(PTy::Int), self.get_pty_id(PTy::Bool));
-                    vec![TyConstr {
-                        name: sym,
-                        params: vec![int, int, bool],
-                    }]
-                }
-                OpKind::Add | OpKind::Mult | OpKind::Sub | OpKind::Div => {
-                    let int = self.get_pty_id(PTy::Int);
-                    vec![TyConstr {
-                        name: sym,
-                        params: vec![int, int, int],
-                    }]
-                }
-                OpKind::Equal => {
-                    let mut constrs = vec![];
-                    for pty in PTy::iter() {
-                        let sym = self.interner.intern(&format!(
-                            "{}{}",
-                            &elem.to_string(),
-                            &pty.to_string(),
-                        ));
-                        let ty = self.get_pty_id(pty);
-                        let bool = self.get_pty_id(PTy::Bool);
-
-                        let constr = TyConstr {
-                            name: sym,
-                            params: vec![ty, ty, bool],
-                        };
-                        constrs.push(constr);
-                    }
-                    constrs
-                }
-            };
-
-            for x in func {
-                let id = self.disjoint_set.new_ty(Ty::Constr(x));
-                self.env.rec_prelude(sym, id);
-            }
-        }
-    }
+    // /// Create all the type constructors that should already exist for
+    // /// 1. Predefined operators (+, &&, <, etc.)
+    // /// 2. Primitive types (Int, Bool, etc)
+    // /// and add them to the prelude.
+    // fn init_tyconsts(&mut self) {
+    //     for elem in PTy::iter() {
+    //         let sym = self.interner.intern(&elem.to_string());
+    //         let (_, id) = self.fresh();
+    //         self.env.rec_prelude(sym, id);
+    //     }
+    //
+    //     for elem in OpKind::iter() {
+    //         let sym = self.interner.intern(&elem.to_string());
+    //
+    //         let func = match elem {
+    //             OpKind::And | OpKind::Or => {
+    //                 let bool = self.get_pty_id(PTy::Bool);
+    //                 vec![TyConstr {
+    //                     name: sym,
+    //                     params: vec![bool; 3],
+    //                 }]
+    //             }
+    //             OpKind::Greater | OpKind::GreaterEqual | OpKind::Less | OpKind::LessEqual => {
+    //                 let (int, bool) = (self.get_pty_id(PTy::Int), self.get_pty_id(PTy::Bool));
+    //                 vec![TyConstr {
+    //                     name: sym,
+    //                     params: vec![int, int, bool],
+    //                 }]
+    //             }
+    //             OpKind::Add | OpKind::Mult | OpKind::Sub | OpKind::Div => {
+    //                 let int = self.get_pty_id(PTy::Int);
+    //                 vec![TyConstr {
+    //                     name: sym,
+    //                     params: vec![int, int, int],
+    //                 }]
+    //             }
+    //             OpKind::Equal => {
+    //                 let mut constrs = vec![];
+    //                 for pty in PTy::iter() {
+    //                     let sym = self.interner.intern(&format!(
+    //                         "{}{}",
+    //                         &elem.to_string(),
+    //                         &pty.to_string(),
+    //                     ));
+    //                     let ty = self.get_pty_id(pty);
+    //                     let bool = self.get_pty_id(PTy::Bool);
+    //
+    //                     let constr = TyConstr {
+    //                         name: sym,
+    //                         params: vec![ty, ty, bool],
+    //                     };
+    //                     constrs.push(constr);
+    //                 }
+    //                 constrs
+    //             }
+    //         };
+    //
+    //         for x in func {
+    //             let id = self.disjoint_set.new_ty(Ty::Constr(x));
+    //             self.env.rec_prelude(sym, id);
+    //         }
+    //     }
+    // }
 
     // Returns an Ast with all the type annotations filled in.
     // TODO: Need some way to code this into the AST itself. Potentially parameterise it based on

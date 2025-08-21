@@ -19,6 +19,8 @@ pub enum ParseErrorKind {
     ExpOpFound(String),
     ExpOperandFound(String),
     ExpIdentFound(String),
+    ExpImplStructTargetFound(String),
+    ExpTyFound(String),
     ExpSemicolonFound(String),
     ExpEqualFound(String),
     ExpLParenFound(String),
@@ -65,6 +67,7 @@ impl ParseErrorKind {
             ParseErrorKind::ExpOpFound(_) => String::from("expected op"),
             ParseErrorKind::ExpOperandFound(_) => String::from("expected operand"),
             ParseErrorKind::ExpIdentFound(_) => String::from("expected ident"),
+            ParseErrorKind::ExpTyFound(_) => String::from("expected ty"),
             ParseErrorKind::ExpSemicolonFound(_) => String::from("expected `;`"),
             ParseErrorKind::ExpFound(vec, _) => {
                 let list = vec
@@ -86,6 +89,9 @@ impl ParseErrorKind {
             ParseErrorKind::ExpColonFound(_) => String::from("expected `:`"),
             ParseErrorKind::ExpTyAnnotationFound(_) => String::from("expected type annotation"),
             ParseErrorKind::IdxNotInitialised => String::from("must be initialised"),
+            ParseErrorKind::ExpImplStructTargetFound(_) => {
+                String::from("expected a struct for the impl block")
+            }
         }
     }
 
@@ -103,7 +109,10 @@ impl ParseErrorKind {
                 format!("found `{x}` where operand was expected")
             }
             ParseErrorKind::ExpIdentFound(x) => {
-                format!("found `{x}` where ident was expected")
+                format!("found `{x}` where an ident was expected")
+            }
+            ParseErrorKind::ExpTyFound(x) => {
+                format!("found `{x}` where a type was expected")
             }
             ParseErrorKind::ExpEqualFound(x) => {
                 format!("found `{x}` where `=` was expected")
@@ -148,6 +157,9 @@ impl ParseErrorKind {
             }
             ParseErrorKind::IdxNotInitialised => {
                 String::from("loop index must be initialised, try adding a `=`")
+            }
+            ParseErrorKind::ExpImplStructTargetFound(x) => {
+                String::from("found {x} where a struct name was expected")
             }
             ParseErrorKind::Unreachable(_) => unreachable!(),
         }

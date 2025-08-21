@@ -5,13 +5,20 @@ use std::{
 
 use strum::EnumIter;
 
-use crate::{error::span::Span, interner::Symbol, token::TokenKind, ty::Ty, value::Value};
+use crate::{
+    error::span::Span,
+    interner::Symbol,
+    token::TokenKind,
+    ty::{Ty, TypeId},
+    value::Value,
+};
 
 pub trait Pass {
-    type XArg<'ast>: Debug;
-    type XRet<'ast>: Debug;
-    type XVar<'ast>: Debug;
-    type XTy<'ast>: Debug;
+    type XArg: Debug;
+    type XRet: Debug;
+    type XVar: Debug;
+    type XTy: Debug;
+    type XId: Debug;
 }
 
 #[derive(Debug)]
@@ -23,79 +30,93 @@ pub struct Typed;
 
 /// Initial state of the
 impl Pass for Untyped {
-    type XArg<'ast> = (Ident, Option<Ident>);
-    type XRet<'ast> = Option<Ident>;
-    type XVar<'ast> = (Ident, Option<Ident>);
-    type XTy<'ast> = Ident;
+    type XArg = (Ident, Ident);
+    type XRet = Option<Ident>;
+    type XVar = (Ident, Option<Ident>);
+    type XTy = Ident;
+    type XId = AstId;
 }
 
 /// All the provided types have been resolved (name resolution) + defined in the type system and
 /// they aren't `TyIdent`s but `Ty`s now.
 impl Pass for Annotated {
-    type XArg<'ast> = (Ident, Option<&'ast Ty>);
-    type XRet<'ast> = Option<&'ast Ty>;
-    type XVar<'ast> = (Ident, Option<&'ast Ty>);
-    type XTy<'ast> = &'ast Ty;
+    type XArg = (Ident, TypeId);
+    type XRet = Option<TypeId>;
+    type XVar = (Ident, Option<TypeId>);
+    type XTy = TypeId;
+    type XId = ResolvedAstId;
 }
 
 impl Pass for Typed {
-    type XArg<'ast> = (Ident, &'ast Ty);
-    type XRet<'ast> = &'ast Ty;
-    type XVar<'ast> = (Ident, &'ast Ty);
-    type XTy<'ast> = &'ast Ty;
+    type XArg = (Ident, TypeId);
+    type XRet = TypeId;
+    type XVar = (Ident, TypeId);
+    type XTy = TypeId;
+    type XId = ResolvedAstId;
 }
 
-pub type Itself<'ast, P> = Box<InnerAst<'ast, P>>;
+pub type Itself<P> = Box<InnerAst<P>>;
 
 /// The spans of higher level things are the sums of the spans of their components
 #[derive(Debug)]
-pub enum Ast<'ast, P: Pass> {
+pub enum Ast<P: Pass> {
     /// The name of the function, the parameters to the function, block, and return type
-    // TODO: technically all the names should be `BindIdent` but i cba rn
     FunDeclaration {
         name: Ident,
         // params: Vec<(BindIdent, Option<TyIdent>)>,
-        params: Vec<P::XArg<'ast>>,
+        params: Vec<P::XArg>,
         // ret: Option<TyIdent>,
-        ret: P::XRet<'ast>,
-        block: Itself<'ast, P>,
+        ret: P::XRet,
+        block: Itself<P>,
     },
     Struct {
         name: Ident,
-        fields: Vec<(Ident, P::XTy<'ast>)>,
+        fields: Vec<(Ident, P::XTy)>,
     },
     ForLoop {
-        decl: Itself<'ast, P>,
-        predicate: Itself<'ast, P>,
-        assignment: Itself<'ast, P>,
-        block: Itself<'ast, P>,
+        decl: Itself<P>,
+        predicate: Itself<P>,
+        assignment: Itself<P>,
+        block: Itself<P>,
     },
     If {
-        predicate: Itself<'ast, P>,
-        then: Itself<'ast, P>,
-        otherwise: Option<Itself<'ast, P>>, // this is `(Block || If)`
+        predicate: Itself<P>,
+        then: Itself<P>,
+        otherwise: Option<Itself<P>>, // this is `(Block || If)`
     },
     Application {
         name: Ident,
-        params: Vec<Itself<'ast, P>>,
+        params: Vec<Itself<P>>,
     },
-    Block(VecDeque<InnerAst<'ast, P>>),
-    Declaration(P::XVar<'ast>, Option<Itself<'ast, P>>),
-    Assignment(Ident, Itself<'ast, P>),
-    BinOp(Op, Itself<'ast, P>, Itself<'ast, P>),
-    UnaryOp(Op, Itself<'ast, P>),
-    FnInvoc(Ident, Option<Vec<InnerAst<'ast, P>>>),
+    ImplBlock(VecDeque<InnerAst<P>>), // only allowed to be function definitions essentially
+    Block(VecDeque<InnerAst<P>>),
+    Declaration(P::XVar, Option<Itself<P>>),
+    Assignment(Ident, Itself<P>),
+    BinOp(Op, Itself<P>, Itself<P>),
+    UnaryOp(Op, Itself<P>),
+    FnInvoc(Ident, Option<Vec<InnerAst<P>>>),
     Ident(Ident),
     Atom(Value),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
+/// A unique identifier for each item in the Ast
 pub struct AstId(pub usize);
 
 #[derive(Debug)]
-pub struct InnerAst<'ast, P: Pass> {
-    pub inner: Ast<'ast, P>,
-    pub id: AstId,
+/// Essentially an interned path to the namespace in which this item can be located
+pub struct OwnerId(pub usize);
+
+#[derive(Debug)]
+pub struct ResolvedAstId {
+    owner_id: OwnerId,
+    ast_id: AstId,
+}
+
+#[derive(Debug)]
+pub struct InnerAst<P: Pass> {
+    pub inner: Ast<P>,
+    pub id: P::XId,
 }
 
 // impl<P: Pass> Iterator for Ast<P> {

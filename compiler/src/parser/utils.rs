@@ -39,6 +39,8 @@ macro_rules! error {
 
 impl Parser<'_> {
     /// Peeks the next token and handles error cases. `err_kind` is for the EOF case
+    // TODO: make this a try_peek macro so that line and column information can be captured
+    // correctly
     pub(super) fn peek(
         &mut self,
         eof_err: impl FnOnce(String) -> PEKind,
@@ -62,6 +64,7 @@ impl Parser<'_> {
     }
 
     /// Should only be used the case that the next token exists but isn't what it should be.
+    // TODO: make a wrapper for this so that the line and column are captured correctly
     pub fn make_err(&mut self, make_kind: impl FnOnce(String) -> PEKind) -> Error {
         self.state = State::Recover;
 
@@ -83,9 +86,8 @@ impl Parser<'_> {
         .into()
     }
 
-    /// Attempts to parse an ident and interns its symbol, returning any errors generated along
-    /// the way
-    pub(super) fn ident(&mut self) -> Result<Ident, Error> {
+    /// Attempts to parse an ident and interns its symbol, returning any `err` if it fails
+    pub(super) fn ident(&mut self, err: impl FnOnce(String) -> PEKind) -> Result<Ident, Error> {
         let next = self.peek(PEKind::ExpIdentFound)?;
         let ident = match next.kind {
             TokenKind::Ident => self.toks.next().unwrap().unwrap(),
@@ -113,11 +115,15 @@ impl Parser<'_> {
     }
 
     /// Tags an `Ast` with its `AstId` and then boxes it
-    pub(super) fn tag(&mut self, ast: Ast<'static, Untyped>) -> Itself<'static, Untyped> {
-        self.ids += 1;
+    pub(super) fn tag(&mut self, ast: Ast<Untyped>) -> Itself<Untyped> {
         Box::new(InnerAst {
             inner: ast,
-            id: AstId(self.ids),
+            id: self.fresh_id(),
         })
+    }
+
+    pub(super) fn fresh_id(&mut self) -> AstId {
+        self.ids += 1;
+        AstId(self.ids)
     }
 }

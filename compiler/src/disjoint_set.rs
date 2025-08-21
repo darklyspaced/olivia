@@ -2,7 +2,7 @@ use std::cell::Cell;
 
 use crate::{
     interner::Symbol,
-    ty::{Ty, TyVar, TypeId},
+    ty::{Ty, TypeId, UntaggedTy},
 };
 
 /// This is a data structure that contains many different disjoint sets that can be merged. This is
@@ -36,21 +36,24 @@ pub struct Elem {
 }
 
 impl DisjointSet {
-    pub fn fresh(&mut self, name: Symbol) -> &Ty {
+    pub fn fresh(&mut self, name: Symbol) -> TypeId {
         let id = self.forest.len();
         let tyid = TypeId(id);
         self.forest.push(Elem {
             rank: Cell::new(0),
-            ty: Ty::Var(name, tyid),
+            ty: Ty::Var(name),
             parent: Cell::new(id),
             id,
         });
-        &self.forest[self.forest.len() - 1].ty
+        tyid
     }
 
     /// Adds a new type that is known with the given name
-    pub fn new_ty(&mut self, ty: Ty) -> TypeId {
+    pub fn new_ty(&mut self, ty: UntaggedTy) -> TypeId {
         let id = self.forest.len();
+        let ty = ty
+            .tag(TypeId(id))
+            .expect("called tag on a primitive type :(");
         self.forest.push(Elem {
             rank: Cell::new(0),
             ty,
@@ -65,7 +68,7 @@ impl DisjointSet {
     /// it becomes quicker and quicker!
     ///
     /// This takes a TypeId since we only want type variables to have representatives since other   
-    pub fn find(&self, id: TypeId) -> &Elem {
+    pub fn find(&self, id: TypeId) -> &Ty {
         let mut curr = self.get_node(id.0);
         let parent = self.get_parent(curr);
 
@@ -76,7 +79,7 @@ impl DisjointSet {
             curr = parent;
         }
 
-        return curr;
+        return &curr.ty;
     }
 
     /// Union algorithm that uses rank to make sure that the trees don't get too deep and
@@ -108,9 +111,9 @@ impl DisjointSet {
             .collect::<Vec<_>>()
     }
 
-    pub fn transform(&mut self, id: TypeId, ty: Ty) {
-        self.forest[id.0].ty = ty;
-    }
+    // pub fn transform(&mut self, id: TypeId, ty: Ty) {
+    //     self.forest[id.0].ty = ty;
+    // }
 
     fn get_node(&self, id: usize) -> &Elem {
         &self.forest[id]

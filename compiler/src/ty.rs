@@ -7,12 +7,84 @@ use crate::interner::Symbol;
 pub struct TypeId(pub usize);
 
 #[derive(Debug)]
+#[repr(u8)]
 pub enum Ty {
+    Unit = 0,
+    Int = 1,
+    Bool = 2,
+    Float = 3,
+    String = 4,
+    Fn {
+        name: Symbol,
+        id: TypeId,
+        params: Vec<TypeId>,
+        ret: TypeId,
+    },
+    Struct(Symbol, TypeId),
+
     /// Anything that isn't a primitive type
     Var(Symbol, TypeId),
-    /// Constructors that when given types construct other types. For example Int would be a
-    /// nullary constructor that when given no types produces an Int
-    Constr(TyConstr),
+}
+
+/// A `Ty` that doesn't have a `TypeId` associated with it yet as it hasn't been added to the
+/// `DisjointSet` yet.
+pub enum UntaggedTy {
+    Unit,
+    Int,
+    Bool,
+    Float,
+    String,
+    Fn {
+        name: Symbol,
+        params: Vec<TypeId>,
+        ret: TypeId,
+    },
+    Struct(Symbol),
+
+    /// Anything that isn't a primitive type
+    Var(Symbol),
+    // /// Constructors that when given types construct other types. For example Int would be a
+    // /// nullary constructor that when given no types produces an Int
+    // Constr(TyConstr),
+}
+
+impl UntaggedTy {
+    pub fn tag(self, id: TypeId) -> Option<Ty> {
+        match self {
+            UntaggedTy::Unit => None,
+            UntaggedTy::Int => None,
+            UntaggedTy::Bool => None,
+            UntaggedTy::Float => None,
+            UntaggedTy::String => None,
+            UntaggedTy::Fn { name, params, ret } => Some(Ty::Fn {
+                name,
+                id,
+                params,
+                ret,
+            }),
+            UntaggedTy::Var(symbol) => Some(Ty::Var(symbol, id)),
+            UntaggedTy::Struct(symbol) => Some(Ty::Struct(symbol, id)),
+        }
+    }
+}
+
+impl Ty {
+    pub fn ty_id(&self) -> TypeId {
+        match self {
+            Ty::Unit => TypeId(0),
+            Ty::Int => TypeId(1),
+            Ty::Bool => TypeId(2),
+            Ty::Float => TypeId(3),
+            Ty::String => TypeId(4),
+            Ty::Fn {
+                name,
+                id,
+                params,
+                ret,
+            } => *id,
+            Ty::Var(symbol, type_id) => *type_id,
+        }
+    }
 }
 
 /// A type constructor with paramaters to fill out where params.last is the output type and the
@@ -20,6 +92,7 @@ pub enum Ty {
 #[derive(Debug)]
 pub struct TyConstr {
     pub name: Symbol,
+    pub ty_id: TypeId,
     pub params: Vec<TypeId>,
 }
 

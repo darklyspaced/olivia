@@ -59,11 +59,11 @@ fn main() {
             }
             if !olivia.debug {
                 println!(
-                                "{}",
-                                Formatted::from(
-                                    String::from("To show backtraces for errors within the compiler itself, enable the `--debug` flag.")
-                                ).colour(Colour::Yellow)
-                            );
+                    "{}",
+                    Formatted::from(
+                        String::from("To show backtraces for errors within the compiler itself, enable the `--debug` flag.")
+                    ).colour(Colour::Yellow)
+                );
             }
         }
         Commands::Tokenize { filename } => {

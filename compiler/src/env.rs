@@ -85,8 +85,17 @@ impl Env {
         }
     }
 
-    pub fn record(&mut self, symbol: Symbol, ty: TypeId) {
-        self.stack[self.frame].data.insert(symbol, ty);
+    /// Takes in a `Symbol` and `TypeId` and returns true if the item was recorded otherwise
+    /// returns false if the `Symbol` already exists.
+    pub fn record(&mut self, symbol: Symbol, ty: TypeId) -> bool {
+        let scope = &mut self.stack[self.frame].data;
+        match scope.get(&symbol) {
+            Some(_) => false,
+            None => {
+                scope.insert(symbol, ty);
+                true
+            }
+        }
     }
 
     pub fn rec_prelude(&mut self, symbol: Symbol, ty: TypeId) {
