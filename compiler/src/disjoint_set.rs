@@ -41,7 +41,7 @@ impl DisjointSet {
         let tyid = TypeId(id);
         self.forest.push(Elem {
             rank: Cell::new(0),
-            ty: Ty::Var(name),
+            ty: Ty::Var(name, tyid),
             parent: Cell::new(id),
             id,
         });
@@ -68,18 +68,18 @@ impl DisjointSet {
     /// it becomes quicker and quicker!
     ///
     /// This takes a TypeId since we only want type variables to have representatives since other   
-    pub fn find(&self, id: TypeId) -> &Ty {
+    pub fn find(&self, id: TypeId) -> &Elem {
         let mut curr = self.get_node(id.0);
         let parent = self.get_parent(curr);
 
         while curr.id != self.get_parent(curr).id {
             let grandparent = self.get_parent(parent);
-            curr.set_parent(&grandparent);
+            curr.set_parent(grandparent);
 
             curr = parent;
         }
 
-        return &curr.ty;
+        curr
     }
 
     /// Union algorithm that uses rank to make sure that the trees don't get too deep and

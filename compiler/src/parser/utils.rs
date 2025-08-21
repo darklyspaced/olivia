@@ -63,7 +63,7 @@ impl Parser<'_> {
         }
     }
 
-    /// Should only be used the case that the next token exists but isn't what it should be.
+    /// Should only be used the case that the next token **exists** but isn't what it should be.
     // TODO: make a wrapper for this so that the line and column are captured correctly
     pub fn make_err(&mut self, make_kind: impl FnOnce(String) -> PEKind) -> Error {
         self.state = State::Recover;

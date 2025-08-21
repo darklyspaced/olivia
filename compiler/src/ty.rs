@@ -76,13 +76,14 @@ impl Ty {
             Ty::Bool => TypeId(2),
             Ty::Float => TypeId(3),
             Ty::String => TypeId(4),
+            Ty::Struct(_, ty_id) => *ty_id,
             Ty::Fn {
                 name,
                 id,
                 params,
                 ret,
             } => *id,
-            Ty::Var(symbol, type_id) => *type_id,
+            Ty::Var(_, type_id) => *type_id,
         }
     }
 }

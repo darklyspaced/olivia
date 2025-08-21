@@ -5,13 +5,7 @@ use std::{
 
 use strum::EnumIter;
 
-use crate::{
-    error::span::Span,
-    interner::Symbol,
-    token::TokenKind,
-    ty::{Ty, TypeId},
-    value::Value,
-};
+use crate::{error::span::Span, interner::Symbol, token::TokenKind, ty::TypeId, value::Value};
 
 pub trait Pass {
     type XArg: Debug;

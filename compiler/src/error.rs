@@ -5,6 +5,7 @@ use parse_err::{ParseError, ParseErrorKind};
 use reportable::{Ctxt, Reportable};
 
 pub mod lex_err;
+pub mod name_res_err;
 pub mod parse_err;
 pub mod report;
 pub mod reportable;

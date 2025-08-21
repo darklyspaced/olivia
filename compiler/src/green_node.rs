@@ -1,0 +1,3 @@
+struct GreenNode {
+    kind: TokenKind,
+}

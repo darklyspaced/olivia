@@ -6,6 +6,7 @@ use crate::token::Token;
 use super::reportable::RawCtxt;
 use super::span::Span;
 
+/// Handles tying back compiler data structures to source locations through spans
 pub struct SourceMap {
     source: String,
     path: PathBuf,

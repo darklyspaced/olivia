@@ -197,6 +197,7 @@ impl<'de> Iterator for Lexer<'de> {
                         "fn" => token!(TokenKind::Fn),
                         "if" => token!(TokenKind::If),
                         "else" => token!(TokenKind::Else),
+                        "impl" => token!(TokenKind::Impl),
                         _ => token!(TokenKind::Ident),
                     }
                 }

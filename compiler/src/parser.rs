@@ -85,7 +85,6 @@ pub struct Parser<'de> {
     ids: usize,
 }
 
-// TODO: need to implement support for impl blocks
 // TODO: need to add support for . notation for field access
 // TODO: add support for use statements and paths to fully qualify names
 impl<'de> Parser<'de> {
@@ -105,13 +104,16 @@ impl<'de> Parser<'de> {
         let _impl = self.toks.next();
         let target_struct = self.ident(PEKind::ExpImplStructTargetFound);
 
-        let next = self.peek(PEKind::ExpRBraceFound)?.kind;
+        let mut next = self.peek(PEKind::ExpRBraceFound)?.kind;
         let mut fns = vec![];
 
         while next != TokenKind::RightBrace {
             let id = self.fresh_id();
             let fn_decl = self.fn_decl()?;
+
             fns.push(InnerAst { inner: fn_decl, id });
+
+            next = self.peek(PEKind::ExpRBraceFound)?.kind;
         }
 
         Ok(Ast::ImplBlock(fns.into()))
@@ -270,7 +272,7 @@ impl<'de> Parser<'de> {
             loop {
                 let binding = self.ident(PEKind::ExpIdentFound)?;
 
-                self.eat(TokenKind::Colon, PEKind::ExpTyAnnotationFound);
+                self.eat(TokenKind::Colon, PEKind::ExpTyAnnotationFound)?;
                 let ty = self.ident(PEKind::ExpTyFound)?;
                 params.push((binding, ty));
 
@@ -345,6 +347,7 @@ impl<'de> Parser<'de> {
             TokenKind::Fn => self.fn_decl(),
             TokenKind::For => self.for_loop(),
             TokenKind::If => self.if_stmt(),
+            TokenKind::Impl => self.impl_block(),
             TokenKind::Struct => self.structure(),
             _ => self.assignment(true),
         }

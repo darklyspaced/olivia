@@ -1,6 +1,6 @@
 use crate::value::ValueKind;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub struct Token<'de> {
     pub kind: TokenKind,
     pub lexeme: &'de str,
@@ -17,7 +17,7 @@ impl Token<'_> {
     }
 }
 
-#[derive(strum_macros::Display, Debug, PartialEq, Copy, Clone)]
+#[derive(strum_macros::Display, Debug, PartialEq, Copy, Clone, Hash, Eq)]
 pub enum TokenKind {
     LeftParen,
     RightParen,
@@ -26,31 +26,25 @@ pub enum TokenKind {
     Semicolon,
     Comma,
     Plus,
-    PlusDot,
     Minus,
-    MinusDot,
     Arrow,
     Star,
-    StarDot,
     Dot,
     Equal,
     EqualEqual,
     Bang,
     BangEqual,
     Greater,
-    GreaterDot,
     GreaterEqual,
-    GreaterEqualDot,
     Less,
-    LessDot,
     LessEqual,
-    LessEqualDot,
     Slash,
     String,
-    Number,
     While,
     For,
     Ident,
+    // HACK: why do we have both Numbers and Integers and Floats etc
+    Number,
     Integer,
     Float,
     Let,
@@ -62,6 +56,8 @@ pub enum TokenKind {
     Ampersand,
     Colon,
     Struct,
+    Impl,
+    Error,
 }
 
 impl TokenKind {
@@ -87,14 +83,24 @@ impl TokenKind {
             TokenKind::LessEqual => "<=",
             TokenKind::Arrow => "->",
             TokenKind::Slash => "/",
-            TokenKind::While => "while",
-            TokenKind::For => "for",
-            TokenKind::Let => "let",
-            TokenKind::Fn => "fn",
-            TokenKind::If => "if",
-            TokenKind::Else => "else",
-            TokenKind::Struct => "struct",
-            tk => unimplemented!("no String repr of {}", tk),
+            TokenKind::While => "WHILE",
+            TokenKind::For => "FOR",
+            TokenKind::Let => "LET",
+            TokenKind::Fn => "FN",
+            TokenKind::If => "IF",
+            TokenKind::Else => "ELSE",
+            TokenKind::Struct => "STRUCT",
+            TokenKind::Impl => "IMPL",
+            TokenKind::Error => "ERROR",
+            TokenKind::String => "STRING",
+            TokenKind::Ident => "IDENT",
+            TokenKind::Integer => "INT",
+            TokenKind::Float => "FLOAT",
+            TokenKind::DoublePipe => "||",
+            TokenKind::DoubleAmpersand => "&&",
+            TokenKind::Ampersand => "&&",
+            TokenKind::Colon => ":",
+            TokenKind::Number => "NUMBER",
         }
     }
 }

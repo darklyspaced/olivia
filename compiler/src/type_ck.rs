@@ -46,7 +46,7 @@ impl<'de> TypeCk<'de> {
         let sym = self.interner.intern(name);
         self.env
             .get(&sym)
-            .expect(&format!("primitive {} not defined?!", name))
+            .unwrap_or_else(|| panic!("primitive {} not defined?!", name))
     }
 
     // /// Initialises a fresh type variable and gives it a generated symbol

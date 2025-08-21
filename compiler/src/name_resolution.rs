@@ -2,6 +2,7 @@ use crate::{
     ast::{AstId, Ident, Op, Pass, Untyped},
     disjoint_set::DisjointSet,
     env::Env,
+    error::{Error, name_res_err::NameResError},
     interner::Interner,
     ty::{Ty, UntaggedTy},
     visitor::Visitor,
@@ -21,15 +22,19 @@ struct ForwardRef<'de> {
     disjoint_set: DisjointSet,
 }
 
-impl Visitor for ForwardRef<'_> {
+// HACK: as of now modules are not supported so you cannot have duplicate item names at all nor can
+// you have duplicate functions names!
+impl Visitor<NameResError> for ForwardRef<'_> {
     type P = Untyped;
 
-    fn visit_block(&mut self) {
+    fn visit_block(&mut self) -> Result<(), Error<NameResError>> {
         self.env.enscope();
+        Ok(())
     }
 
-    fn block_exited(&mut self) {
+    fn block_exited(&mut self) -> Result<(), Error<NameResError>> {
         self.env.descope();
+        Ok(())
     }
 
     fn visit_fun_declaration(
@@ -38,10 +43,14 @@ impl Visitor for ForwardRef<'_> {
         params: &[<Self::P as Pass>::XArg],
         ret: &<Self::P as Pass>::XRet,
         id: AstId,
-    ) {
+    ) -> Result<(), Error<NameResError>> {
+        if self.env.get(&name.sym).is_some() {
+            panic!("a function of this name already exists!")
+        }
+
         let ret = match ret {
             Some(ident) => match self.env.get(&ident.sym) {
-                Some(ty) => self.disjoint_set.find(ty).ty_id(),
+                Some(ty) => self.disjoint_set.find(ty).ty.ty_id(),
                 None => {
                     let ty = self.disjoint_set.fresh(ident.sym);
                     self.env.record(ident.sym, ty);
@@ -54,8 +63,8 @@ impl Visitor for ForwardRef<'_> {
         let params = params
             .iter()
             .map(|(name, ty)| {
-                let ty = match self.env.get(&name.sym) {
-                    Some(ty) => self.disjoint_set.find(ty).ty_id(),
+                let ty = match self.env.get(&ty.sym) {
+                    Some(ty) => self.disjoint_set.find(ty).ty.ty_id(),
                     None => {
                         let ty_id = self.disjoint_set.fresh(ty.sym);
                         self.env.record(name.sym, ty_id);
@@ -74,45 +83,62 @@ impl Visitor for ForwardRef<'_> {
             ret,
         });
         self.env.record(name.sym, fn_ty);
+
+        Ok(())
     }
 
-    fn visit_for_loop(&mut self) {
+    fn visit_struct(
+        &mut self,
+        name: &Ident,
+        fields: &[(Ident, <Self::P as Pass>::XTy)],
+    ) -> Result<(), Error<NameResError>> {
         todo!()
     }
 
-    fn visit_if(&mut self) {
+    fn visit_for_loop(&mut self) -> Result<(), Error<NameResError>> {
         todo!()
     }
 
-    fn visit_application(&mut self, name: &Ident) {
+    fn visit_if(&mut self) -> Result<(), Error<NameResError>> {
         todo!()
     }
 
-    fn visit_declaration(&mut self, var: &<Self::P as Pass>::XVar) {
+    fn visit_application(&mut self, name: &Ident) -> Result<(), Error<NameResError>> {
         todo!()
     }
 
-    fn visit_assignment(&mut self, ident: &Ident) {
+    fn visit_impl_block(&mut self) -> Result<(), Error<NameResError>> {
         todo!()
     }
 
-    fn visit_bin_op(&mut self, op: &Op) {
+    fn visit_declaration(
+        &mut self,
+        var: &<Self::P as Pass>::XVar,
+    ) -> Result<(), Error<NameResError>> {
         todo!()
     }
 
-    fn visit_unary_op(&mut self, op: &Op) {
+    fn visit_assignment(&mut self, ident: &Ident) -> Result<(), Error<NameResError>> {
         todo!()
     }
 
-    fn visit_fn_invoc(&mut self, bind_ident: &Ident) {
+    fn visit_bin_op(&mut self, op: &Op) -> Result<(), Error<NameResError>> {
         todo!()
     }
 
-    fn visit_ident(&mut self, ident: &Ident) {
+    fn visit_unary_op(&mut self, op: &Op) -> Result<(), Error<NameResError>> {
         todo!()
     }
 
-    fn visit_atom(&mut self, value: &crate::value::Value) {
+    fn visit_fn_invoc(&mut self, bind_ident: &Ident) -> Result<(), Error<NameResError>> {
+        todo!()
+    }
+
+    fn visit_ident(&mut self, ident: &Ident) -> Result<(), Error<NameResError>> {
+        todo!()
+    }
+
+    fn visit_atom(&mut self, value: &crate::value::Value) -> Result<(), Error<NameResError>> {
         todo!()
     }
 }
