@@ -10,7 +10,7 @@ pub mod interner;
 pub mod lexer;
 pub mod name_resolution;
 pub mod parser;
-pub mod syntax_tree;
+pub mod red_node;
 pub mod token;
 pub mod ty;
 pub mod type_ck;

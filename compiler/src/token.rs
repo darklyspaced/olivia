@@ -58,6 +58,8 @@ pub enum TokenKind {
     Struct,
     Impl,
     Error,
+    Comment,
+    Whitespace,
 }
 
 impl TokenKind {
@@ -101,6 +103,8 @@ impl TokenKind {
             TokenKind::Ampersand => "&&",
             TokenKind::Colon => ":",
             TokenKind::Number => "NUMBER",
+            TokenKind::Whitespace => "WSPACE",
+            TokenKind::Comment => "COMMENT",
         }
     }
 }
