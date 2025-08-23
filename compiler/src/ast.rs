@@ -125,11 +125,11 @@ pub struct InnerAst<P: Pass> {
 //     }
 // }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 /// An identifier to the function, type, or variable
 pub struct Ident {
     pub sym: Symbol,
-    pub span: Span,
+    pub width: usize,
 }
 
 #[derive(Debug)]
@@ -194,17 +194,11 @@ impl From<TokenKind> for OpType {
         use TokenKind::*;
         match value {
             Plus => Self::IntOp,
-            PlusDot => Self::FloatOp,
             Minus => Self::IntOp,
-            MinusDot => Self::FloatOp,
             Greater => Self::IntCmp,
-            GreaterDot => Self::FloatCmp,
             GreaterEqual => Self::IntCmp,
-            GreaterEqualDot => Self::FloatCmp,
             Less => Self::IntCmp,
-            LessDot => Self::FloatCmp,
             LessEqual => Self::IntCmp,
-            LessEqualDot => Self::FloatCmp,
             x => unreachable!(
                 "{} should have been filtered out by pratt parsing algo before this via try_from",
                 x

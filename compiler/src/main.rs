@@ -19,7 +19,7 @@ struct Olivia {
 #[derive(Subcommand)]
 enum Commands {
     /// Tokenises the input
-    Tokenize {
+    Tokenise {
         /// Source to tokenise
         filename: String,
     },
@@ -39,25 +39,30 @@ fn main() {
 
             let lexer = Lexer::new(&source_map);
             let mut interner = Interner::with_capacity(1024);
+            let mut errored = false;
 
-            let parser = OParser::new(lexer, &source_map, &mut interner);
+            let mut parser = OParser::new(lexer, &source_map, &mut interner);
             for stmt in parser {
                 match stmt {
-                    Ok(s) => println!("{s:?}"),
+                    Ok(_) => (),
                     Err(e) => {
+                        if !errored {
+                            errored = true;
+                        }
+
                         if olivia.debug {
-                            // SAFETY: this _shouldn't_ cause UB as long you don't run cargo
-                            // elsewhere while also running this at the same time...
-                            unsafe {
-                                std::env::set_var("RUST_BACKTRACE", "full");
-                            }
                             println!("{}", e.backtrace);
                         }
                         println!("{}", Report::from(e));
                     }
                 }
             }
-            if !olivia.debug {
+
+            let output = parser.output();
+            println!("{output:?}");
+            // TODO: define Display for GreenNode<'de>
+
+            if !olivia.debug && errored {
                 println!(
                     "{}",
                     Formatted::from(
@@ -66,7 +71,7 @@ fn main() {
                 );
             }
         }
-        Commands::Tokenize { filename } => {
+        Commands::Tokenise { filename } => {
             let source_map = SourceMap::from(filename);
 
             let lexer = Lexer::new(&source_map);

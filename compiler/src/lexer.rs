@@ -97,7 +97,7 @@ impl<'de> Iterator for Lexer<'de> {
     type Item = Result<Token<'de>, Error<LexError>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (mut c, mut start);
+        let (c, start);
 
         macro_rules! token {
             ($kind:path) => {
@@ -140,89 +140,95 @@ impl<'de> Iterator for Lexer<'de> {
             };
         }
 
-        loop {
-            (c, start) = (self.chars.next()?, self.chars.offset());
-            match c {
-                '(' => token!(TokenKind::LeftParen),
-                ')' => token!(TokenKind::RightParen),
-                '{' => token!(TokenKind::LeftBrace),
-                '}' => token!(TokenKind::RightBrace),
-                ';' => token!(TokenKind::Semicolon),
-                ',' => token!(TokenKind::Comma),
-                '+' => token!(TokenKind::Plus),
-                '*' => token!(TokenKind::Star),
-                ':' => token!(TokenKind::Colon),
-                '=' => token!(TokenKind::Equal, '=', TokenKind::EqualEqual),
-                '!' => token!(TokenKind::Bang, '=', TokenKind::BangEqual),
-                '>' => token!(TokenKind::Greater, '=', TokenKind::GreaterEqual),
-                '<' => token!(TokenKind::Less, '=', TokenKind::LessEqual),
-                '-' => token!(TokenKind::Minus, '>', TokenKind::Arrow),
-                '&' => token!(TokenKind::Ampersand, '&', TokenKind::DoubleAmpersand),
-                '|' => match self.chars.peek() {
-                    Some('|') => {
-                        token!(TokenKind::DoublePipe)
-                    }
-                    _ => error!(LexErrorKind::UnexpectedCharacter),
-                },
-                '/' => match self.chars.peek() {
-                    Some('/') => {
-                        while self.chars.next_if_neq(&'\n').is_some() {}
-                        continue;
-                    }
-                    _ => token!(TokenKind::Slash),
-                },
-                '"' => {
-                    while self.chars.next_if_neq(&'"').is_some() {}
-
-                    if self.chars.next_if_eq(&'"').is_none() {
-                        error!(LexErrorKind::UnterminatedStringLiteral)
-                    }
-
-                    let side = '"'.len_utf8();
-                    let literal = &self.source[start + side..=self.chars.offset() - side];
-
-                    token!(TokenKind::String, literal)
+        (c, start) = (self.chars.next()?, self.chars.offset());
+        match c {
+            '(' => token!(TokenKind::LeftParen),
+            ')' => token!(TokenKind::RightParen),
+            '{' => token!(TokenKind::LeftBrace),
+            '}' => token!(TokenKind::RightBrace),
+            ';' => token!(TokenKind::Semicolon),
+            ',' => token!(TokenKind::Comma),
+            '+' => token!(TokenKind::Plus),
+            '*' => token!(TokenKind::Star),
+            ':' => token!(TokenKind::Colon),
+            '=' => token!(TokenKind::Equal, '=', TokenKind::EqualEqual),
+            '!' => token!(TokenKind::Bang, '=', TokenKind::BangEqual),
+            '>' => token!(TokenKind::Greater, '=', TokenKind::GreaterEqual),
+            '<' => token!(TokenKind::Less, '=', TokenKind::LessEqual),
+            '-' => token!(TokenKind::Minus, '>', TokenKind::Arrow),
+            '&' => token!(TokenKind::Ampersand, '&', TokenKind::DoubleAmpersand),
+            '|' => match self.chars.peek() {
+                Some('|') => {
+                    token!(TokenKind::DoublePipe)
                 }
-                'a'..='z' | 'A'..='Z' => {
-                    while self
-                        .chars
-                        .next_if(|c| !c.is_whitespace() && c.is_alphanumeric())
-                        .is_some()
-                    {}
-
-                    match &self.source[start..=self.chars.offset()] {
-                        "while" => token!(TokenKind::While),
-                        "for" => token!(TokenKind::For),
-                        "let" => token!(TokenKind::Let),
-                        "fn" => token!(TokenKind::Fn),
-                        "if" => token!(TokenKind::If),
-                        "else" => token!(TokenKind::Else),
-                        "impl" => token!(TokenKind::Impl),
-                        _ => token!(TokenKind::Ident),
-                    }
+                _ => error!(LexErrorKind::UnexpectedCharacter),
+            },
+            '/' => match self.chars.peek() {
+                Some('/') => {
+                    while self.chars.next_if_neq(&'\n').is_some() {}
+                    let literal = &self.source[start..=self.chars.offset()];
+                    token!(TokenKind::Comment, literal)
                 }
-                '.' => match self.chars.peek() {
-                    Some('1'..='9') => {
+                _ => token!(TokenKind::Slash),
+            },
+            '"' => {
+                while self.chars.next_if_neq(&'"').is_some() {}
+
+                if self.chars.next_if_eq(&'"').is_none() {
+                    error!(LexErrorKind::UnterminatedStringLiteral)
+                }
+
+                let side = '"'.len_utf8();
+                let literal = &self.source[start + side..=self.chars.offset() - side];
+
+                token!(TokenKind::String, literal)
+            }
+            'a'..='z' | 'A'..='Z' => {
+                while self
+                    .chars
+                    .next_if(|c| !c.is_whitespace() && c.is_alphanumeric())
+                    .is_some()
+                {}
+
+                match &self.source[start..=self.chars.offset()] {
+                    "while" => token!(TokenKind::While),
+                    "for" => token!(TokenKind::For),
+                    "let" => token!(TokenKind::Let),
+                    "fn" => token!(TokenKind::Fn),
+                    "if" => token!(TokenKind::If),
+                    "else" => token!(TokenKind::Else),
+                    "impl" => token!(TokenKind::Impl),
+                    _ => token!(TokenKind::Ident),
+                }
+            }
+            '.' => match self.chars.peek() {
+                Some('1'..='9') => {
+                    while self.chars.next_if(|c| c.is_ascii_digit()).is_some() {}
+                    // TODO: need a better way for the below
+                    token!(TokenKind::Float, &self.source[start..=self.chars.offset()])
+                }
+                _ => token!(TokenKind::Dot),
+            },
+            '1'..='9' => {
+                while self.chars.next_if(|c| c.is_ascii_digit()).is_some() {}
+
+                match self.chars.next_if_eq(&'.') {
+                    Some(_) => {
                         while self.chars.next_if(|c| c.is_ascii_digit()).is_some() {}
-                        // TODO: need a better way for the below
                         token!(TokenKind::Float, &self.source[start..=self.chars.offset()])
                     }
-                    _ => token!(TokenKind::Dot),
-                },
-                '1'..='9' => {
-                    while self.chars.next_if(|c| c.is_ascii_digit()).is_some() {}
-
-                    match self.chars.next_if_eq(&'.') {
-                        Some(_) => {
-                            while self.chars.next_if(|c| c.is_ascii_digit()).is_some() {}
-                            token!(TokenKind::Float, &self.source[start..=self.chars.offset()])
-                        }
-                        _ => token!(TokenKind::Number, &self.source[start..=self.chars.offset()]),
-                    }
+                    _ => token!(TokenKind::Number, &self.source[start..=self.chars.offset()]),
                 }
-                x if x.is_whitespace() => continue,
-                _ => error!(LexErrorKind::UnexpectedCharacter),
             }
+            x if x.is_whitespace() => {
+                while self.chars.next_if(|x| x.is_whitespace()).is_some() {}
+
+                token!(
+                    TokenKind::Whitespace,
+                    &self.source[start..=self.chars.offset()]
+                )
+            }
+            _ => error!(LexErrorKind::UnexpectedCharacter),
         }
     }
 }
@@ -231,7 +237,7 @@ impl Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{} {} {}",
+            "{} \"{}\" {}",
             self.kind,
             self.lexeme,
             self.literal.unwrap_or("")

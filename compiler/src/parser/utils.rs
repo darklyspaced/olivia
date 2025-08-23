@@ -1,12 +1,14 @@
+use std::iter::Peekable;
+
 use super::{Parser, State};
 
 use crate::{
-    ast::{Ast, AstId, Ident, InnerAst, Itself, Untyped},
     error::{
         self,
-        lex_err::LexErrorKind,
+        lex_err::{LexError, LexErrorKind},
         parse_err::{ParseError, ParseErrorKind as PEKind},
     },
+    lexer::Lexer,
     token::{Token, TokenKind},
 };
 
@@ -37,7 +39,7 @@ macro_rules! error {
     };
 }
 
-impl Parser<'_> {
+impl<'de> Parser<'de> {
     /// Peeks the next token and handles error cases. `err_kind` is for the EOF case
     // TODO: make this a try_peek macro so that line and column information can be captured
     // correctly
@@ -45,7 +47,8 @@ impl Parser<'_> {
         &mut self,
         eof_err: impl FnOnce(String) -> PEKind,
     ) -> Result<&Token<'_>, Error> {
-        if let Some(Err(e)) = self.toks.peek() {
+        self.eat_ws();
+        if let Some(Err(e)) = self.peek_raw() {
             let kind = e.kind();
             self.state = match kind {
                 LexErrorKind::UnexpectedCharacter => State::Recover,
@@ -56,6 +59,7 @@ impl Parser<'_> {
             return Err(err.into());
         }
 
+        self.eat_ws();
         match self.toks.peek() {
             Some(Ok(tok)) => Ok(tok),
             Some(Err(_)) => unreachable!(),
@@ -87,43 +91,112 @@ impl Parser<'_> {
     }
 
     /// Attempts to parse an ident and interns its symbol, returning any `err` if it fails
-    pub(super) fn ident(&mut self, err: impl FnOnce(String) -> PEKind) -> Result<Ident, Error> {
+    pub(super) fn ident(&mut self, err: impl FnOnce(String) -> PEKind) -> Result<(), Error> {
+        self.eat_ws();
         let next = self.peek(PEKind::ExpIdentFound)?;
         let ident = match next.kind {
             TokenKind::Ident => self.toks.next().unwrap().unwrap(),
-            _ => return Err(self.make_err(PEKind::ExpIdentFound)),
+            _ => return Err(self.make_err(err)),
         };
 
-        Ok(crate::ast::Ident {
+        let width = ident.lexeme.len();
+        let ident = crate::ast::Ident {
             sym: self.interner.intern(ident.lexeme),
-            span: self.source_map.span_from_tok(&ident),
-        })
+            width,
+            // span: self.source_map.span_from_tok(&ident),
+        };
+
+        self.builder.leaf_name(ident);
+        Ok(())
     }
 
     /// Eats `kind` otherwise throws `err`
-    pub(super) fn eat<G>(&mut self, kind: TokenKind, err: G) -> Result<Token<'_>, Error>
+    pub(super) fn eat<G>(&mut self, kind: TokenKind, err: G) -> Result<(), Error>
     where
         G: FnOnce(String) -> PEKind + Clone,
     {
+        self.eat_ws();
         let equals = self.peek(err.clone())?;
-        let tok = if equals.kind == kind {
-            self.toks.next().unwrap().unwrap()
+        if equals.kind == kind {
+            Ok(self.consume())
         } else {
             return Err(self.make_err(err));
-        };
-        Ok(tok)
+        }
     }
 
-    /// Tags an `Ast` with its `AstId` and then boxes it
-    pub(super) fn tag(&mut self, ast: Ast<Untyped>) -> Itself<Untyped> {
-        Box::new(InnerAst {
-            inner: ast,
-            id: self.fresh_id(),
-        })
+    pub(super) fn consume(&mut self) {
+        self.eat_ws();
+        self.builder.leaf(self.toks.next().unwrap().unwrap())
     }
 
-    pub(super) fn fresh_id(&mut self) -> AstId {
-        self.ids += 1;
-        AstId(self.ids)
+    pub(super) fn next_if(
+        &mut self,
+        cb: impl FnOnce(Option<&<Peekable<Lexer<'_>> as Iterator>::Item>) -> bool,
+    ) -> bool {
+        self.eat_ws();
+        if cb(self.toks.peek()) {
+            self.consume();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Eats whitespace. Should be called at the start of every helper function because otherwise
+    /// it might not match correctly
+    fn eat_ws(&mut self) {
+        if let Some(Ok(Token {
+            kind: TokenKind::Whitespace,
+            ..
+        })) = self.toks.peek()
+        {
+            self.consume();
+        }
+    }
+
+    pub(super) fn peek_raw(&mut self) -> Option<&<Peekable<Lexer<'_>> as Iterator>::Item> {
+        self.eat_ws();
+        self.toks.peek()
+    }
+}
+
+mod no_reg {
+    //! This is only for the expression subsection of the parser since the order for parsing and
+    //! adding to the green tree there is slightly goofy. Parses things and returns them
+    //! **without** adding them to the green tree that's being created.
+
+    use super::Parser;
+
+    use crate::{
+        ast::Ident,
+        error::{
+            self,
+            parse_err::{ParseError, ParseErrorKind as PEKind},
+        },
+        token::{Token, TokenKind},
+    };
+
+    type Error = error::Error<ParseError>;
+
+    impl Parser<'_> {
+        pub(in super::super) fn ident_noreg(
+            &mut self,
+            err: impl FnOnce(String) -> PEKind,
+        ) -> Result<Ident, Error> {
+            self.eat_ws();
+            let next = self.peek(PEKind::ExpIdentFound)?;
+            let ident = match next.kind {
+                TokenKind::Ident => self.toks.next().unwrap().unwrap(),
+                _ => return Err(self.make_err(err)),
+            };
+
+            let width = ident.lexeme.len();
+            let ident = crate::ast::Ident {
+                sym: self.interner.intern(ident.lexeme),
+                width,
+            };
+
+            Ok(ident)
+        }
     }
 }

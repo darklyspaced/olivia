@@ -26,7 +26,7 @@ impl<'de> RedNode<'de> {
         self.0.parent.clone()
     }
 
-    /// The red tree is essentially only build as we traverse so the general strategy here is to
+    /// The red tree is essentially only built as we traverse so the general strategy here is to
     /// compute the absolute offsets of the children using the widths of the green nodes as a basis
     /// assuming that the root is 0 offset obviously.
     fn children(&'de self) -> impl Iterator<Item = RedNode<'de>> {

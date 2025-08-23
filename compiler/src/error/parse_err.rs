@@ -28,8 +28,10 @@ pub enum ParseErrorKind {
     ExpLBraceFound(String),
     ExpRBraceFound(String),
     ExpBlockFound(String),
+    ExpIfOrBlockFound(String),
     ExpColonFound(String),
     ExpCommaFound(String),
+    ExpVarDefFound(String),
     ExpTyAnnotationFound(String),
     ExpFound(Vec<TokenKind>, String),
     IdxNotInitialised,
@@ -89,9 +91,11 @@ impl ParseErrorKind {
             ParseErrorKind::ExpColonFound(_) => String::from("expected `:`"),
             ParseErrorKind::ExpTyAnnotationFound(_) => String::from("expected type annotation"),
             ParseErrorKind::IdxNotInitialised => String::from("must be initialised"),
+            ParseErrorKind::ExpVarDefFound(_) => String::from("expected a variable definition"),
             ParseErrorKind::ExpImplStructTargetFound(_) => {
                 String::from("expected a struct for the impl block")
             }
+            ParseErrorKind::ExpIfOrBlockFound(_) => String::from("expected `if` or `{}`"),
         }
     }
 
@@ -160,6 +164,12 @@ impl ParseErrorKind {
             }
             ParseErrorKind::ExpImplStructTargetFound(x) => {
                 String::from("found {x} where a struct name was expected")
+            }
+            ParseErrorKind::ExpVarDefFound(x) => {
+                String::from("found {x} where a variable definition was expected")
+            }
+            ParseErrorKind::ExpIfOrBlockFound(x) => {
+                String::from("found {x} where if or a block was expected")
             }
             ParseErrorKind::Unreachable(_) => unreachable!(),
         }
