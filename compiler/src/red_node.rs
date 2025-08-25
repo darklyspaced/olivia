@@ -1,20 +1,20 @@
-use std::rc::Rc;
+use std::{fmt::Display, rc::Rc};
 
 use crate::green_node::{Green, GreenNode};
 
 #[derive(Clone, Debug)]
 /// Essentially a zipper over a purely function tree (the green tree)
-struct RedNode<'de>(Rc<RedData<'de>>);
+pub struct SyntaxTree<'de>(Rc<RedData<'de>>);
 
 #[derive(Debug)]
 struct RedData<'de> {
     offset: usize,
-    parent: Option<RedNode<'de>>,
+    parent: Option<SyntaxTree<'de>>,
     green: Green<'de>,
 }
 
-impl<'de> RedNode<'de> {
-    fn new_root(root: GreenNode<'de>) -> Self {
+impl<'de> SyntaxTree<'de> {
+    pub fn new_root(root: GreenNode<'de>) -> Self {
         Self(Rc::new(RedData {
             parent: None,
             offset: 0,
@@ -22,14 +22,14 @@ impl<'de> RedNode<'de> {
         }))
     }
 
-    fn parent(&self) -> Option<Self> {
+    pub fn parent(&self) -> Option<Self> {
         self.0.parent.clone()
     }
 
     /// The red tree is essentially only built as we traverse so the general strategy here is to
     /// compute the absolute offsets of the children using the widths of the green nodes as a basis
     /// assuming that the root is 0 offset obviously.
-    fn children(&'de self) -> impl Iterator<Item = RedNode<'de>> {
+    pub fn children(&'de self) -> impl Iterator<Item = SyntaxTree<'de>> {
         let mut offset = self.0.offset;
         let mut computed_children = vec![];
 
@@ -46,10 +46,41 @@ impl<'de> RedNode<'de> {
 
         computed_children.into_iter()
     }
+
+    /// Just a helper function to print it out properly
+    fn dump(&self, indent: usize, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let green = &self.0.green;
+        let start = self.0.offset;
+        let end = start + green.width();
+
+        let pad = "  ".repeat(indent);
+
+        match green {
+            Green::Node(node) => {
+                writeln!(f, "{}{:?}@{}..{}", pad, node.kind, start, end)?;
+                for child in self.children() {
+                    child.dump(indent + 1, f)?;
+                }
+                Ok(())
+            }
+            Green::LeafT(tok) => {
+                writeln!(f, "{}{:?}@{}..{}", pad, tok.kind, start, end)
+            }
+            Green::LeafN(_) => {
+                writeln!(f, "{}Ident@{}..{}", pad, start, end)
+            }
+        }
+    }
 }
 
-impl PartialEq for RedNode<'_> {
+impl PartialEq for SyntaxTree<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.0.offset == other.0.offset && self.0.green == other.0.green
+    }
+}
+
+impl Display for SyntaxTree<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.dump(0, f)
     }
 }

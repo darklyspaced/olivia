@@ -60,7 +60,7 @@ impl Green<'_> {
 /// very shallow and sparse and we're mostly just copying pointers anyways.
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub struct GreenNode<'de> {
-    kind: SyntaxKind,
+    pub kind: SyntaxKind,
     pub width: usize,
     pub children: Vec<Green<'de>>,
 }
@@ -115,12 +115,28 @@ impl<'de> Interner<'de> {
     }
 }
 
-// impl Display for GreenNode<'_> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         for child in self.children {
-//             writeln!(f, "{}", child)?
-//         }
-//
-//         Ok(())
-//     }
-// }
+impl Display for GreenNode<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for child in &self.children {
+            writeln!(f, "{}", child)?
+        }
+
+        Ok(())
+    }
+}
+
+impl Display for Green<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Node(n) => {
+                writeln!(f, "{n}")
+            }
+            Self::LeafT(lt) => {
+                writeln!(f, "{lt}")
+            }
+            Self::LeafN(ln) => {
+                writeln!(f, "{ln:?}")
+            }
+        }
+    }
+}

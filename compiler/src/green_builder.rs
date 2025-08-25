@@ -12,6 +12,7 @@ pub struct GreenBuilder<'de> {
     interner: green_node::Interner<'de>,
     mode: StoreMode,
     cache: Vec<GreenNode<'de>>,
+    op_cache: Vec<(Option<Token<'de>>, Token<'de>)>,
     stack: Vec<GreenNode<'de>>,
     depth: usize,
 }
@@ -21,12 +22,14 @@ pub enum StoreMode {
     Cache,
 }
 
+// HACK: this entire implementation makes me deeply sad
 impl<'de> GreenBuilder<'de> {
     pub fn new() -> Self {
         Self {
-            stack: vec![],
+            stack: vec![GreenNode::new(SyntaxKind::Source)],
             mode: StoreMode::Direct,
             cache: vec![GreenNode::new(SyntaxKind::Error)],
+            op_cache: vec![],
             interner: green_node::Interner::new(),
             depth: 0,
         }
@@ -74,17 +77,9 @@ impl<'de> GreenBuilder<'de> {
     }
 
     pub fn extend(&mut self, ext: Vec<Green<'de>>) {
-        use StoreMode::*;
-        let target = match self.mode {
-            Direct => &mut self.stack,
-            Cache => &mut self.cache,
-        };
-
-        target
-            .last_mut()
-            .expect("cache is empty")
-            .children
-            .extend(ext);
+        for child in ext {
+            self.store(child);
+        }
     }
 
     /// Flush the cache and return it to the user so they can store it
@@ -96,6 +91,21 @@ impl<'de> GreenBuilder<'de> {
                 .expect("root of cache doesn't exist")
                 .children,
         )
+    }
+
+    pub fn add_to_op_cache(&mut self, tok: Token<'de>) {
+        self.op_cache.last_mut().unwrap().1 = tok;
+    }
+
+    pub fn flush_op(&mut self) {
+        let op = self
+            .op_cache
+            .pop()
+            .expect("attempted to flush empty op_cache");
+        if let Some(ws) = op.0 {
+            self.leaf(ws);
+        }
+        self.leaf(op.1);
     }
 
     /// To be called everytime the parser wants to create a new node
@@ -119,14 +129,21 @@ impl<'de> GreenBuilder<'de> {
     ///
     /// We have to calculate width on the way back up and we have to intern here as well
     pub fn exit_node(&mut self) {
-        assert!(self.stack.len() > 1);
-        self.depth -= 1;
-        let last = self.stack.pop().unwrap();
+        let target = match &self.mode {
+            StoreMode::Direct => {
+                self.depth -= 1;
+                &mut self.stack
+            }
+            StoreMode::Cache => &mut self.cache,
+        };
+
+        assert!(target.len() > 1);
+        let last = target.pop().unwrap();
 
         let exiting_node_width = last.width;
         let node = self.interner.intern_node(last);
 
-        let last = self.stack.last_mut().expect("root node does not exist");
+        let last = target.last_mut().expect("root node does not exist");
         last.children.push(node);
         last.width += exiting_node_width
     }
@@ -134,5 +151,11 @@ impl<'de> GreenBuilder<'de> {
     pub fn end(mut self) -> GreenNode<'de> {
         assert!(self.stack.len() == 1); // should only be the root node
         self.stack.pop().unwrap()
+    }
+}
+
+impl Default for GreenBuilder<'_> {
+    fn default() -> Self {
+        GreenBuilder::new()
     }
 }

@@ -65,6 +65,8 @@ pub enum SyntaxKind {
     Error,
     Comment,
     Whitespace,
+
+    Source,
 }
 
 impl From<TokenKind> for SyntaxKind {
