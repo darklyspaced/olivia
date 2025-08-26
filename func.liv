@@ -1,3 +1,2 @@
 fn test(c: int) {
-    let x = 100;
 }

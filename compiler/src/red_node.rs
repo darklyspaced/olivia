@@ -1,9 +1,10 @@
 use std::{fmt::Display, rc::Rc};
 
-use crate::green_node::{Green, GreenNode};
+use crate::green_node::{Green, GreenTree};
 
 #[derive(Clone, Debug)]
-/// Essentially a zipper over a purely function tree (the green tree)
+/// Essentially a zipper datastructure over a purely function tree (the green tree). This is a
+/// losless syntax tree.
 pub struct SyntaxTree<'de>(Rc<RedData<'de>>);
 
 #[derive(Debug)]
@@ -14,7 +15,7 @@ struct RedData<'de> {
 }
 
 impl<'de> SyntaxTree<'de> {
-    pub fn new_root(root: GreenNode<'de>) -> Self {
+    pub fn new_root(root: GreenTree<'de>) -> Self {
         Self(Rc::new(RedData {
             parent: None,
             offset: 0,
@@ -48,7 +49,7 @@ impl<'de> SyntaxTree<'de> {
     }
 
     /// Just a helper function to print it out properly
-    fn dump(&self, indent: usize, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn print(&self, indent: usize, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let green = &self.0.green;
         let start = self.0.offset;
         let end = start + green.width();
@@ -59,7 +60,7 @@ impl<'de> SyntaxTree<'de> {
             Green::Node(node) => {
                 writeln!(f, "{}{:?}@{}..{}", pad, node.kind, start, end)?;
                 for child in self.children() {
-                    child.dump(indent + 1, f)?;
+                    child.print(indent + 1, f)?;
                 }
                 Ok(())
             }
@@ -81,6 +82,6 @@ impl PartialEq for SyntaxTree<'_> {
 
 impl Display for SyntaxTree<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.dump(0, f)
+        self.print(0, f)
     }
 }

@@ -1,30 +1,27 @@
+mod action;
 pub mod utils;
 
 use std::iter::Peekable;
 
 use crate::{
-    ast::{OpKind, OpType},
-    disjoint_set::DisjointSet,
-    env::Env,
+    ast::{Ast, AstId, Ident, InnerAst, Op, OpKind, OpType, Untyped},
     error::{
         self,
         parse_err::{ParseError, ParseErrorKind as PEKind},
         source_map::SourceMap,
     },
-    green_builder::{GreenBuilder, StoreMode},
-    green_node::{Green, GreenNode},
     interner::Interner,
     lexer::Lexer,
+    parser::action::Action,
     syntax::SyntaxKind,
     token::{Token, TokenKind},
+    value::Value,
 };
 
 type Error = error::Error<ParseError>;
 
-// TODO: have an error sink instead of this Iterator pattern and relying on the consumer to pick up
-// errors
 impl Iterator for Parser<'_> {
-    type Item = Result<(), Error>;
+    type Item = Result<Ast<Untyped>, Error>;
     /// How this function operates is dependant on `State`. If `State::Parse`, then we parse. If
     /// `State::Recover` then we must recover then change the state back to `State::Parse` and then
     /// return a token.
@@ -44,25 +41,21 @@ impl Iterator for Parser<'_> {
                     return Some(self.stmt());
                 }
                 State::Recover => {
-                    // TODO: implement error recovery on a per function basis where try maybe
-                    // returns to an error sink instead of actually returning from parsing the
-                    // function but i don't really care about error recovery for now
-                    self.builder.error();
-                    while self.next_if(|tok| {
-                        tok.as_ref().is_some_and(|a| {
-                            a.as_ref().is_ok_and(|b| {
+                    while self
+                        .toks
+                        .next_if(|tok| {
+                            tok.as_ref().is_ok_and(|x| {
                                 matches!(
-                                    b.kind,
+                                    x.kind,
                                     TokenKind::Semicolon
                                         | TokenKind::While
                                         | TokenKind::Equal
                                         | TokenKind::For
-                                        | TokenKind::RightBrace,
                                 )
                             })
                         })
-                    }) {}
-                    self.builder.exit_node();
+                        .is_some()
+                    {}
                     self.state = State::Parse;
                 }
                 State::Abort | State::Finished => break None,
@@ -72,7 +65,6 @@ impl Iterator for Parser<'_> {
 }
 
 /// The state of the parser
-#[derive(PartialEq, Eq)]
 pub enum State {
     /// Parse
     Parse,
@@ -88,11 +80,10 @@ pub struct Parser<'de> {
     state: State,
     interner: &'de mut Interner,
     source_map: &'de SourceMap,
-    builder: GreenBuilder<'de>,
-    output: Option<GreenNode<'de>>,
     toks: Peekable<Lexer<'de>>,
-    disjoint_set: DisjointSet,
-    env: Env,
+    actions: Vec<Action<'de>>,
+    /// The index of the most recent Action::Start {..} in actions
+    start_idx: usize,
     ids: usize,
 }
 
@@ -103,166 +94,164 @@ impl<'de> Parser<'de> {
         Self {
             state: State::Parse,
             toks: iter.peekable(),
-            env: Env::new(),
-            builder: GreenBuilder::new(),
-            output: None,
-            disjoint_set: DisjointSet::default(),
+            actions: vec![],
+            start_idx: 0,
             source_map,
             interner,
             ids: 0,
         }
     }
 
-    pub fn output(&mut self) -> GreenNode<'de> {
-        if self.state == State::Finished {
-            std::option::Option::take(&mut self.output).unwrap()
-        } else {
-            panic!("don't call before the parser returns None")
-        }
-    }
-
-    fn impl_block(&mut self) -> Result<(), Error> {
-        self.builder.enter_node(SyntaxKind::Impl);
-        self.consume();
-
-        self.ident(PEKind::ExpImplStructTargetFound)?;
+    fn impl_block(&mut self) -> Result<Ast<Untyped>, Error> {
+        let _impl = self.toks.next();
+        let _target_struct = self.ident(PEKind::ExpImplStructTargetFound);
 
         let mut next = self.peek(PEKind::ExpRBraceFound)?.kind;
+        let mut fns = vec![];
 
         while next != TokenKind::RightBrace {
-            self.fn_decl()?;
+            let id = self.fresh_id();
+            let fn_decl = self.fn_decl()?;
+
+            fns.push(InnerAst { inner: fn_decl, id });
+
             next = self.peek(PEKind::ExpRBraceFound)?.kind;
         }
 
-        self.builder.exit_node();
-        Ok(())
+        Ok(Ast::ImplBlock(fns.into()))
     }
 
-    fn structure(&mut self) -> Result<(), Error> {
-        self.builder.enter_node(SyntaxKind::Struct);
-        self.consume();
-
-        let _struct_name = self.ident(PEKind::ExpIdentFound)?;
-
-        self.builder.enter_node(SyntaxKind::FieldList);
+    fn structure(&mut self) -> Result<Ast<Untyped>, Error> {
+        let _struct = self.toks.next();
+        let name = self.ident(PEKind::ExpIdentFound)?;
         self.eat(TokenKind::LeftBrace, PEKind::ExpLBraceFound)?;
+        let mut fields = vec![];
 
         while self
             .peek(|x| PEKind::ExpFound(vec![TokenKind::Ident, TokenKind::RightBrace], x))?
             .kind
             != TokenKind::RightBrace
         {
-            let _field = self.ident(PEKind::ExpIdentFound)?;
+            let field = self.ident(PEKind::ExpIdentFound)?;
             self.eat(TokenKind::Colon, PEKind::ExpTyAnnotationFound)?;
-            let _ty = self.ident(PEKind::ExpTyFound)?;
+            let ty = self.ident(PEKind::ExpTyFound)?;
             self.eat(TokenKind::Comma, PEKind::ExpCommaFound)?;
+
+            fields.push((field, ty));
         }
 
-        let _r_brace = self.consume();
+        let _r_brace = self.toks.next();
 
-        self.builder.exit_node();
-        Ok(())
+        Ok(Ast::Struct { name, fields })
     }
 
-    fn if_stmt(&mut self) -> Result<(), Error> {
-        self.builder.enter_node(SyntaxKind::If);
-        let _if = self.consume();
-
-        self.builder.enter_node(SyntaxKind::IfPredicate);
+    fn if_stmt(&mut self) -> Result<Ast<Untyped>, Error> {
+        let _if = self.toks.next();
         self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
-        let _predicate = self.expression()?;
+        let predicate = self.expression()?;
         self.eat(TokenKind::RightParen, PEKind::ExpRParenFound)?;
-        self.builder.exit_node();
 
-        let _then = self.block()?;
+        let then = self.block()?;
 
         if let Some(Ok(Token {
             kind: TokenKind::Else,
             ..
-        })) = self.peek_raw()
+        })) = self.toks.peek()
         {
-            let _else = self.consume();
-            let next = self.peek(PEKind::ExpIfOrBlockFound)?;
-            if next.kind == TokenKind::If {
-                // HACK: this might break typeck later i'm not sure (just letting if be parsed here
-                // instead of special casing, that is)
-                self.if_stmt();
+            let _else = self.toks.next();
+            if let Some(Ok(Token {
+                kind: TokenKind::If,
+                ..
+            })) = self.toks.peek()
+            {
+                let if_stmt = self.if_stmt()?;
+                Ok(Ast::If {
+                    predicate: self.tag(predicate),
+                    then: self.tag(then),
+                    otherwise: Some(self.tag(if_stmt)),
+                })
             } else {
-                self.block()?;
+                let block = self.block()?;
+                Ok(Ast::If {
+                    predicate: self.tag(predicate),
+                    then: self.tag(then),
+                    otherwise: Some(self.tag(block)),
+                })
             }
+        } else {
+            Ok(Ast::If {
+                predicate: self.tag(predicate),
+                then: self.tag(then),
+                otherwise: None,
+            })
         }
-
-        self.builder.exit_node();
-        Ok(())
     }
 
-    fn for_loop(&mut self) -> Result<(), Error> {
-        self.builder.enter_node(SyntaxKind::If);
-        let _for_kw = self.consume();
-
-        self.builder.enter_node(SyntaxKind::ForCommand);
+    fn for_loop(&mut self) -> Result<Ast<Untyped>, Error> {
         self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
 
-        self.eat(TokenKind::Let, PEKind::ExpVarDefFound)?;
-        let _loop_counter = self.ident(PEKind::ExpIdentFound)?;
+        let ident = self.ident(PEKind::ExpIdentFound)?;
+        let mut ty = None;
 
         if let Some(Ok(Token {
             kind: TokenKind::Colon,
             ..
-        })) = self.peek_raw()
+        })) = self.toks.peek()
         {
-            self.consume();
-            let _loop_counter_ty = self.ident(PEKind::ExpTyFound)?;
+            self.toks.next();
+            ty = Some(self.ident(PEKind::ExpTyFound)?);
         }
 
         self.eat(TokenKind::Equal, |_| PEKind::IdxNotInitialised)?;
 
-        let _value = self.expression()?;
+        let value = self.expression()?;
         self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
-        let _predicate = self.expression()?;
+        let expr = self.expression()?;
+        let predicate = self.tag(expr);
         self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
 
-        self.assignment(false)?;
+        let assignment = self.assignment(false)?;
 
         self.eat(TokenKind::RightParen, PEKind::ExpRParenFound)?;
-        self.builder.exit_node();
+        let block = self.block()?;
 
-        self.block()?;
-
-        self.builder.exit_node();
-        Ok(())
+        let val = self.tag(value);
+        Ok(Ast::ForLoop {
+            decl: self.tag(Ast::Declaration((ident, ty), Some(val))),
+            predicate,
+            assignment: self.tag(assignment),
+            block: self.tag(block),
+        })
     }
 
-    fn fn_decl(&mut self) -> Result<(), Error> {
-        self.builder.enter_node(SyntaxKind::Fn);
-        let _fn = self.consume();
-
-        let _fn_name = self.ident(PEKind::ExpIdentFound)?;
-
-        self.builder.enter_node(SyntaxKind::ParamList);
+    fn fn_decl(&mut self) -> Result<Ast<Untyped>, Error> {
+        let _fn = self.toks.next();
+        let ident = self.ident(PEKind::ExpIdentFound)?;
         self.eat(TokenKind::LeftParen, PEKind::ExpLParenFound)?;
+
+        let mut params = vec![];
 
         let mut next =
             self.peek(|x| PEKind::ExpFound(vec![TokenKind::Ident, TokenKind::RightParen], x))?;
         if next.kind != TokenKind::RightParen {
             loop {
-                let _param_name = self.ident(PEKind::ExpIdentFound)?;
+                let binding = self.ident(PEKind::ExpIdentFound)?;
 
                 self.eat(TokenKind::Colon, PEKind::ExpTyAnnotationFound)?;
-                let _ty = self.ident(PEKind::ExpTyFound)?;
+                let ty = self.ident(PEKind::ExpTyFound)?;
+                params.push((binding, ty));
 
                 next = self
                     .peek(|x| PEKind::ExpFound(vec![TokenKind::Comma, TokenKind::RightParen], x))?;
 
                 match next.kind {
                     TokenKind::RightParen => {
-                        let _r_paren = self.consume();
-                        self.builder.exit_node();
+                        let _r_paren = self.toks.next();
                         break;
                     }
                     TokenKind::Comma => {
-                        let _comma = self.consume();
+                        let _comma = self.toks.next();
                         continue;
                     }
                     _ => {
@@ -276,41 +265,46 @@ impl<'de> Parser<'de> {
 
         let err = |x| PEKind::ExpFound(vec![TokenKind::LeftBrace, TokenKind::Arrow], x);
         let branch = self.peek(err)?;
-        match branch.kind {
-            TokenKind::Arrow => {
-                self.builder.enter_node(SyntaxKind::RetTy);
-                let _arrow = self.consume();
-                self.ident(PEKind::ExpIdentFound)?
-            }
-            TokenKind::LeftBrace => (),
+        let ret = match branch.kind {
+            TokenKind::Arrow => Some(self.ident(PEKind::ExpIdentFound)?),
+            TokenKind::LeftBrace => None,
             _ => return Err(self.make_err(err)),
         };
 
-        self.block()?;
+        let block = self.block()?;
 
-        self.builder.exit_node();
-        Ok(())
+        Ok(Ast::FunDeclaration {
+            name: ident,
+            params,
+            ret,
+            block: self.tag(block),
+        })
     }
 
-    fn block(&mut self) -> Result<(), Error> {
-        self.builder.enter_node(SyntaxKind::Block);
-
+    fn block(&mut self) -> Result<Ast<Untyped>, Error> {
+        let mut stmts = vec![];
         let _l_brace = self.eat(TokenKind::LeftBrace, PEKind::ExpLParenFound)?;
 
         let mut next = self.peek(PEKind::ExpLBraceFound)?;
         while next.kind != TokenKind::RightBrace {
-            self.stmt()?;
+            let stmt = self.stmt()?;
+
+            let inner = InnerAst {
+                inner: stmt,
+                id: self.fresh_id(),
+            };
+
+            stmts.push(inner);
             next = self.peek(PEKind::ExpRBraceFound)?;
         }
 
-        let _r_brace = self.consume();
+        let _r_brace = self.toks.next();
 
-        self.builder.exit_node();
-        Ok(())
+        Ok(Ast::Block(stmts.into()))
     }
 
     /// func | var | assignment | for | if | struct
-    fn stmt(&mut self) -> Result<(), Error> {
+    fn stmt(&mut self) -> Result<Ast<Untyped>, Error> {
         match self
             .peek(|x| PEKind::ExpFound(vec![TokenKind::Fn, TokenKind::Let], x))?
             .kind
@@ -326,134 +320,134 @@ impl<'de> Parser<'de> {
     }
 
     /// Parse an assignment of a value to an ident
-    fn assignment(&mut self, semi: bool) -> Result<(), Error> {
-        self.builder.enter_node(SyntaxKind::Assignment);
-
-        let _name = self.ident(PEKind::ExpIdentFound)?;
-        self.eat(TokenKind::Equal, PEKind::ExpEqualFound)?;
-        self.expression()?;
+    fn assignment(&mut self, semi: bool) -> Result<Ast<Untyped>, Error> {
+        let ident = self.ident(PEKind::ExpIdentFound)?;
+        let _equal = self.eat(TokenKind::Equal, PEKind::ExpEqualFound)?;
+        let expr = self.expression()?;
         if semi {
-            self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
+            let _semicolon = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
         }
 
-        self.builder.exit_node();
-        Ok(())
+        Ok(Ast::Assignment(ident, self.tag(expr)))
     }
 
     /// Parse a declaration
-    fn declaration(&mut self) -> Result<(), Error> {
-        self.builder.enter_node(SyntaxKind::Declaration);
-        let _let = self.consume();
-        let _name = self.ident(PEKind::ExpIdentFound)?;
+    fn declaration(&mut self) -> Result<Ast<Untyped>, Error> {
+        let _let = self.toks.next();
+        let ident = self.ident(PEKind::ExpIdentFound)?;
+        let mut ty = None;
 
         let branch = self
             .peek(|x| PEKind::ExpFound(vec![TokenKind::Semicolon, TokenKind::Equal], x))?
             .kind;
+        // actually used further on
 
         if branch == TokenKind::Colon {
-            self.consume();
-            self.ident(PEKind::ExpTyFound)?;
+            self.toks.next();
+            ty = Some(self.ident(PEKind::ExpIdentFound)?);
         }
 
         match branch {
             TokenKind::Semicolon => {
-                self.consume();
+                self.toks.next();
+
+                Ok(Ast::Declaration((ident, ty), None))
             }
             TokenKind::Equal => {
-                self.consume();
+                self.toks.next();
 
-                self.expression()?;
+                let expr = self.expression()?;
+
                 let _semicolon = self.eat(TokenKind::Semicolon, PEKind::ExpSemicolonFound)?;
+
+                Ok(Ast::Declaration((ident, ty), Some(self.tag(expr))))
             }
-            _ => {
-                return Err(self.make_err(|tok| {
-                    PEKind::ExpFound(vec![TokenKind::Semicolon, TokenKind::Equal], tok)
-                }));
+            _ => Err(self.make_err(|tok| {
+                PEKind::ExpFound(vec![TokenKind::Semicolon, TokenKind::Equal], tok)
+            })),
+        }
+    }
+
+    fn parse_params(&mut self, ident: Ident) -> Result<Ast<Untyped>, Error> {
+        let mut params = vec![];
+        let _l_param = self.toks.next();
+
+        let mut next = self.peek(PEKind::ExpExprFound)?;
+        if next.kind != TokenKind::RightParen {
+            loop {
+                self.ids += 1;
+                let inner = InnerAst {
+                    inner: self.expression()?,
+                    id: AstId(self.ids),
+                };
+                params.push(inner);
+
+                let err = |x| PEKind::ExpFound(vec![TokenKind::Comma, TokenKind::RightParen], x);
+
+                next = self.peek(err)?;
+                match next.kind {
+                    TokenKind::RightParen => {
+                        break;
+                    }
+                    TokenKind::Comma => {
+                        let _comma = self.toks.next();
+                        continue;
+                    }
+                    _ => return Err(self.make_err(err)),
+                };
             }
         }
 
-        self.builder.exit_node();
-        Ok(())
+        let _r_paren = self.toks.next();
+
+        Ok(Ast::FnInvoc(
+            ident,
+            if params.is_empty() {
+                None
+            } else {
+                Some(params)
+            },
+        ))
     }
 
     /// Extract an expression, handling any errors that were raised
-    fn expression(&mut self) -> Result<(), Error> {
+    fn expression(&mut self) -> Result<Ast<Untyped>, Error> {
         let res = self.expr(0);
         let Ok(expr) = res else {
             self.state = State::Recover;
             return Err(res.unwrap_err());
         };
-        self.builder.set_mode(StoreMode::Direct);
-        self.builder.extend(expr);
-        Ok(())
+        Ok(expr)
     }
 
     /// An implementation of Pratt Parsing to deal with mathematical operations. All calls to this
     /// function from outside of itself must have `min_bp` = 0.
-    ///
-    /// The general strategy is to parse the LHS and then to have a look at the RHS. If the RHS
-    /// has an operator to the right of it who can't bind it strong enough aka LHS `op1` RHS `op2`
-    /// where `op2`.left < `op1`.right then we stop and then fold so we smash LHS and RHS
-    /// together w `op1` and set that to LHS and resume from `op2` so state looks like LHS `op2`
-    /// RHS `op3`.
-    ///
-    /// The problem with expressions for these are that they are created from the inside out not
-    /// linearly so we have to special case this function
-    fn expr(&mut self, min_bp: u8) -> Result<Vec<Green<'de>>, Error> {
-        self.builder.set_mode(StoreMode::Cache);
+    fn expr(&mut self, min_bp: u8) -> Result<Ast<Untyped>, Error> {
+        // TODO: probably need a consume left until m marker so we do need trackers +
+        // completed_trackers after all hahahah.....
+        todo!();
+        self.start(SyntaxKind::BinExpr);
 
         let next = self.peek(PEKind::ExpExprFound)?;
-
-        let mut lhs = match next.kind {
+        match next.kind {
             TokenKind::Number | TokenKind::Float => {
-                let _val_tok = self.consume();
-                self.builder.flush()
+                let val_tok = self.toks.next().unwrap().unwrap();
+                // Ast::Atom(Value {
+                //     kind: val_tok.val(),
+                //     span: self.source_map.span_from_tok(&val_tok),
+                // })
             }
             TokenKind::Ident => {
-                let ident = self.ident_noreg(PEKind::ExpIdentFound)?;
+                self.start(SyntaxKind::FnApp);
+                let ident = self.ident(PEKind::ExpIdentFound)?;
 
                 let next = self.peek(PEKind::ExpSemicolonFound)?;
                 match next.kind {
                     TokenKind::LeftParen => {
-                        self.builder.enter_node(SyntaxKind::FnApp); // this goes into cache
-                        self.builder.leaf_name(ident);
-                        self.builder.enter_node(SyntaxKind::ParamList);
-                        let _l_paren = self.consume();
-
-                        let mut next = self.peek(PEKind::ExpExprFound)?;
-                        if next.kind != TokenKind::RightParen {
-                            loop {
-                                let _param = self.expression()?;
-
-                                let err = |x| {
-                                    PEKind::ExpFound(
-                                        vec![TokenKind::Comma, TokenKind::RightParen],
-                                        x,
-                                    )
-                                };
-                                next = self.peek(err)?;
-                                match next.kind {
-                                    TokenKind::RightParen => {
-                                        self.consume();
-                                        self.builder.exit_node(); // param list
-                                        self.builder.exit_node(); // fn app
-                                        break;
-                                    }
-                                    TokenKind::Comma => {
-                                        self.consume();
-                                        continue;
-                                    }
-                                    _ => return Err(self.make_err(err)),
-                                };
-                            }
-                        }
-
-                        self.builder.flush()
+                        self.parse_params(ident)?;
+                        self.end(); // close the FnApp
                     }
-                    _ => {
-                        self.builder.leaf_name(ident);
-                        self.builder.flush()
-                    }
+                    _ => self.abandon(), // abandon the FnApp
                 }
             }
             _ => {
@@ -461,41 +455,44 @@ impl<'de> Parser<'de> {
             }
         };
 
-        // FIXME: probably doesn't play nicely with whitespace
-        while self.peek_raw().is_some() {
-            let tok = self.peek(PEKind::Unreachable)?;
+        if self.toks.peek().is_some() {
+            while self.toks.peek().is_some() {
+                let tok = self.peek(PEKind::Unreachable)?;
 
-            let Ok(op_kind) = OpKind::try_from(tok.kind) else {
-                break;
-            };
+                let Ok(op_kind) = OpKind::try_from(tok.kind) else {
+                    self.abandon();
+                    break;
+                };
+                let _ty = OpType::from(tok.kind);
 
-            let (l, r) = infix_binding_power(&op_kind);
-            if l < min_bp {
-                // at this point, we fold towards the left
-                break;
+                let (l, r) = infix_binding_power(&op_kind);
+                if l < min_bp {
+                    // at this point, we fold towards the left
+                    break;
+                }
+
+                // only want to consume once we know that we're folding so that after
+                // folding we can resume on the operator that had a lower BP to the left of
+                // it
+                let _tok_op = self.toks.next().unwrap().unwrap();
+                // let op = Op {
+                //     ty,
+                //     kind: op_kind,
+                //     span: self.source_map.span_from_tok(&tok_op),
+                // };
+
+                let _rhs = self.expr(r)?;
+                let bin_expr = self.end(); // end after op and rhs
+                bin_expr.precede(self, SyntaxKind::BinExpr);
+                // lhs = Ast::BinOp(op, self.tag(lhs), self.tag(rhs))
             }
-
-            // only want to consume once we know that we're folding so that after
-            // folding we can resume on the operator that had a lower BP to the left of
-            // it
-            let _tok_op = self.consume();
-            // let op = Op {
-            //     ty,
-            //     kind: op_kind,
-            //     span: self.source_map.span_from_tok(&tok_op),
-            // };
-            let mut rhs = self.expr(r)?;
-            rhs.extend(self.builder.flush()); // add the opp on
-
-            self.builder.enter_node(SyntaxKind::BinExpr);
-            self.builder.extend(lhs);
-            self.builder.extend(rhs);
-            self.builder.exit_node();
-
-            lhs = self.builder.flush();
+        } else {
+            // nothing to parse next so it cannot be a BinExpr
+            self.abandon();
         }
 
-        Ok(lhs)
+        todo!();
+        // Ok(())
     }
 }
 
@@ -508,10 +505,4 @@ fn infix_binding_power(op: &OpKind) -> (u8, u8) {
         OpKind::Add | OpKind::Sub => (9, 10),
         OpKind::Mult | OpKind::Div => (11, 12),
     }
-}
-
-pub enum Kind {
-    Atom,
-    FnApp,
-    Ident,
 }

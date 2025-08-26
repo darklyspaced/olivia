@@ -1,10 +1,14 @@
 use crate::value::ValueKind;
 
+/// Has leading and trailing trivia to consume all whitespace and comments etc to ensure that we
+/// can create a lossless syntax tree
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub struct Token<'de> {
     pub kind: TokenKind,
     pub lexeme: &'de str,
     pub literal: Option<&'de str>,
+    pub leading_trivia: Vec<Trivia<'de>>,
+    pub trailing_trivia: Vec<Trivia<'de>>,
 }
 
 impl Token<'_> {
@@ -107,4 +111,12 @@ impl TokenKind {
             TokenKind::Comment => "COMMENT",
         }
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Trivia<'de> {
+    Space(usize),
+    Tab(usize),
+    NewLine(usize),
+    Comment { txt: &'de str, width: usize },
 }

@@ -8,7 +8,7 @@ use crate::{ast::Ident, syntax::SyntaxKind, token::Token};
 
 #[derive(Debug, Eq, Hash, Clone)]
 pub enum Green<'de> {
-    Node(Rc<GreenNode<'de>>),
+    Node(Rc<GreenTree<'de>>),
     LeafT(Rc<Token<'de>>),
     LeafN(Ident),
 }
@@ -59,19 +59,19 @@ impl Green<'_> {
 /// The derivation on clone for this should be fairly cheap considering Syntax Trees are usually
 /// very shallow and sparse and we're mostly just copying pointers anyways.
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
-pub struct GreenNode<'de> {
+pub struct GreenTree<'de> {
     pub kind: SyntaxKind,
     pub width: usize,
     pub children: Vec<Green<'de>>,
 }
 
-impl GreenNode<'_> {
+impl GreenTree<'_> {
     pub fn children(&self) -> std::slice::Iter<'_, Green<'_>> {
         self.children.iter()
     }
 
     pub fn new(kind: SyntaxKind) -> Self {
-        GreenNode {
+        GreenTree {
             width: 0,
             children: vec![],
             kind,
@@ -80,7 +80,7 @@ impl GreenNode<'_> {
 }
 
 pub struct Interner<'de> {
-    node_table: HashMap<GreenNode<'de>, Rc<GreenNode<'de>>>,
+    node_table: HashMap<GreenTree<'de>, Rc<GreenTree<'de>>>,
     leaf_table: HashMap<Token<'de>, Rc<Token<'de>>>,
 }
 
@@ -103,7 +103,7 @@ impl<'de> Interner<'de> {
         }
     }
 
-    pub fn intern_node(&mut self, target: GreenNode<'de>) -> Green<'de> {
+    pub fn intern_node(&mut self, target: GreenTree<'de>) -> Green<'de> {
         match self.node_table.entry(target) {
             Entry::Occupied(entry) => Green::Node(Rc::clone(entry.get())),
             Entry::Vacant(entry) => {
@@ -115,7 +115,7 @@ impl<'de> Interner<'de> {
     }
 }
 
-impl Display for GreenNode<'_> {
+impl Display for GreenTree<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for child in &self.children {
             writeln!(f, "{}", child)?

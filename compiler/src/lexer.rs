@@ -6,7 +6,10 @@ use crate::{
         lex_err::{LexError, LexErrorKind},
         source_map::SourceMap,
     },
-    token::{Token, TokenKind},
+    token::{
+        Token, TokenKind,
+        Trivia::{self, Space},
+    },
 };
 
 pub struct Lexer<'de> {
@@ -63,7 +66,15 @@ impl<'de> Scanner<'de> {
     }
 
     pub fn peek(&mut self) -> Option<&char> {
-        self.peeked.get_or_insert_with(|| self.iter.next()).as_ref()
+        self.peeked
+            .get_or_insert_with(|| {
+                let char = self.iter.next();
+                char.inspect(|c| {
+                    self.offset += self.prev;
+                    self.prev = c.len_utf8();
+                })
+            })
+            .as_ref()
     }
 
     pub fn next_if_eq(&mut self, expected: &char) -> Option<char> {
@@ -84,6 +95,11 @@ impl<'de> Scanner<'de> {
         }
     }
 
+    fn back(&mut self, c: char) {
+        assert!(self.peeked.is_none(), "last call must have been to .next()");
+        self.peeked = Some(Some(c));
+    }
+
     fn offset(&self) -> usize {
         self.offset
             - match self.peeked {
@@ -97,32 +113,40 @@ impl<'de> Iterator for Lexer<'de> {
     type Item = Result<Token<'de>, Error<LexError>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (c, start);
+        let (mut c, mut start);
+        let mut leading_trivia = vec![];
+        let trailing_trivia = vec![];
 
         macro_rules! token {
             ($kind:path) => {
-                return Some(Ok(Token {
+                Token {
                     kind: $kind,
                     lexeme: &self.source[start..=self.chars.offset()],
                     literal: None,
-                }))
+                    leading_trivia,
+                    trailing_trivia,
+                }
             };
             ($single:path, $pred:expr, $branch:path) => {
-                return match self.chars.next_if_eq(&$pred) {
-                    Some(_) => Some(Ok(Token {
+                match self.chars.next_if_eq(&$pred) {
+                    Some(_) => Token {
                         kind: $branch,
                         lexeme: &self.source[start..=self.chars.offset()],
                         literal: None,
-                    })),
+                        leading_trivia,
+                        trailing_trivia,
+                    },
                     _ => token!($single),
                 }
             };
             ($kind:path, $literal:expr) => {
-                return Some(Ok(Token {
+                Token {
                     kind: $kind,
                     lexeme: &self.source[start..=self.chars.offset()],
                     literal: Some($literal),
-                }))
+                    leading_trivia,
+                    trailing_trivia,
+                }
             };
         }
 
@@ -140,8 +164,48 @@ impl<'de> Iterator for Lexer<'de> {
             };
         }
 
-        (c, start) = (self.chars.next()?, self.chars.offset());
-        match c {
+        loop {
+            (c, start) = (self.chars.next()?, self.chars.offset());
+            match c {
+                '\t' => {
+                    while self.chars.next_if_eq(&c).is_some() {}
+                    leading_trivia.push(Trivia::Tab(
+                        (self.chars.offset() - start) / c.len_utf8() + 1,
+                    ))
+                }
+                ' ' => {
+                    while self.chars.next_if_eq(&c).is_some() {}
+                    leading_trivia.push(Trivia::Space(
+                        (self.chars.offset() - start) / c.len_utf8() + 1,
+                    ))
+                }
+                '\n' => {
+                    while self.chars.next_if_eq(&c).is_some() {}
+                    leading_trivia.push(Trivia::NewLine(
+                        (self.chars.offset() - start) / c.len_utf8() + 1,
+                    ))
+                }
+                '/' => {
+                    if self.chars.peek() == Some(&'/') {
+                        self.chars.next();
+                        while self.chars.next_if_neq(&'\n').is_some() {}
+                        self.chars.next(); // \n
+                        let txt = &self.source[start..=self.chars.offset()];
+                        leading_trivia.push(Trivia::Comment {
+                            txt,
+                            width: txt.len(),
+                        })
+                    } else {
+                        break;
+                    }
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+
+        let mut token = match c {
             '(' => token!(TokenKind::LeftParen),
             ')' => token!(TokenKind::RightParen),
             '{' => token!(TokenKind::LeftBrace),
@@ -163,18 +227,11 @@ impl<'de> Iterator for Lexer<'de> {
                 }
                 _ => error!(LexErrorKind::UnexpectedCharacter),
             },
-            '/' => match self.chars.peek() {
-                Some('/') => {
-                    while self.chars.next_if_neq(&'\n').is_some() {}
-                    let literal = &self.source[start..=self.chars.offset()];
-                    token!(TokenKind::Comment, literal)
-                }
-                _ => token!(TokenKind::Slash),
-            },
+            '/' => token!(TokenKind::Slash),
             '"' => {
                 while self.chars.next_if_neq(&'"').is_some() {}
 
-                if self.chars.next_if_eq(&'"').is_none() {
+                if self.chars.next().is_none() {
                     error!(LexErrorKind::UnterminatedStringLiteral)
                 }
 
@@ -204,7 +261,6 @@ impl<'de> Iterator for Lexer<'de> {
             '.' => match self.chars.peek() {
                 Some('1'..='9') => {
                     while self.chars.next_if(|c| c.is_ascii_digit()).is_some() {}
-                    // TODO: need a better way for the below
                     token!(TokenKind::Float, &self.source[start..=self.chars.offset()])
                 }
                 _ => token!(TokenKind::Dot),
@@ -217,19 +273,54 @@ impl<'de> Iterator for Lexer<'de> {
                         while self.chars.next_if(|c| c.is_ascii_digit()).is_some() {}
                         token!(TokenKind::Float, &self.source[start..=self.chars.offset()])
                     }
-                    _ => token!(TokenKind::Number, &self.source[start..=self.chars.offset()]),
+                    _ => {
+                        token!(TokenKind::Number, &self.source[start..=self.chars.offset()])
+                    }
                 }
             }
-            x if x.is_whitespace() => {
-                while self.chars.next_if(|x| x.is_whitespace()).is_some() {}
-
-                token!(
-                    TokenKind::Whitespace,
-                    &self.source[start..=self.chars.offset()]
-                )
-            }
             _ => error!(LexErrorKind::UnexpectedCharacter),
+        };
+
+        while let Some(x) = self.chars.peek()
+            && (x.is_whitespace() || *x == '/')
+        {
+            (c, start) = (self.chars.next()?, self.chars.offset());
+            match c {
+                '\t' => {
+                    while self.chars.next_if_eq(&c).is_some() {}
+                    token.trailing_trivia.push(Trivia::Tab(
+                        (self.chars.offset() - start) / c.len_utf8() + 1,
+                    ))
+                }
+                ' ' => {
+                    while self.chars.next_if_eq(&c).is_some() {}
+                    token.trailing_trivia.push(Trivia::Space(
+                        (self.chars.offset() - start) / c.len_utf8() + 1,
+                    ))
+                }
+                '/' => {
+                    if self.chars.peek() == Some(&'/') {
+                        self.chars.next();
+                        while self.chars.next_if_neq(&'\n').is_some() {}
+                        // only diff is that we don't consume '\n' here
+                        let txt = &self.source[start..=self.chars.offset()];
+                        token.trailing_trivia.push(Trivia::Comment {
+                            txt,
+                            width: txt.len(),
+                        })
+                    } else {
+                        self.chars.back(c); // abandon, no longer parse comment
+                        break;
+                    }
+                }
+                _ => {
+                    self.chars.back(c); // abandon
+                    break;
+                }
+            }
         }
+
+        Some(Ok(token))
     }
 }
 
