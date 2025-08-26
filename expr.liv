@@ -1,3 +1,2 @@
-let x = 1 +   22 ; // hello from the other side
-let
+let x = 1 +   22 * 3; // hello from the other side
 

@@ -1,4 +1,4 @@
-use super::{Parser, State};
+use super::{Parser, State, action::Tree};
 
 use crate::{
     ast::{Ast, AstId, Ident, InnerAst, Itself, Untyped},
@@ -87,43 +87,41 @@ impl Parser<'_> {
     }
 
     /// Attempts to parse an ident and interns its symbol, returning any `err` if it fails
-    pub(super) fn ident(&mut self, err: impl FnOnce(String) -> PEKind) -> Result<Ident, Error> {
+    pub(super) fn ident(&mut self, err: impl FnOnce(String) -> PEKind) -> Result<(), Error> {
         let next = self.peek(PEKind::ExpIdentFound)?;
         let ident = match next.kind {
             TokenKind::Ident => self.toks.next().unwrap().unwrap(),
-            _ => return Err(self.make_err(PEKind::ExpIdentFound)),
+            _ => return Err(self.make_err(err)),
         };
 
-        Ok(crate::ast::Ident {
-            sym: self.interner.intern(ident.lexeme),
-            width: ident.lexeme.len(),
-        })
+        self.actions.push(Tree::Ident {
+            ident: crate::ast::Ident {
+                sym: self.interner.intern(ident.lexeme),
+                width: ident.lexeme.len(),
+            },
+        });
+
+        Ok(())
     }
 
     /// Eats `kind` otherwise throws `err`
-    pub(super) fn eat<G>(&mut self, kind: TokenKind, err: G) -> Result<Token<'_>, Error>
+    pub(super) fn eat<G>(&mut self, kind: TokenKind, err: G) -> Result<(), Error>
     where
         G: FnOnce(String) -> PEKind + Clone,
     {
         let equals = self.peek(err.clone())?;
-        let tok = if equals.kind == kind {
-            self.toks.next().unwrap().unwrap()
+        if equals.kind == kind {
+            self.consume()
         } else {
             return Err(self.make_err(err));
         };
-        Ok(tok)
+        Ok(())
     }
 
-    /// Tags an `Ast` with its `AstId` and then boxes it
-    pub(super) fn tag(&mut self, ast: Ast<Untyped>) -> Itself<Untyped> {
-        Box::new(InnerAst {
-            inner: ast,
-            id: self.fresh_id(),
-        })
-    }
-
-    pub(super) fn fresh_id(&mut self) -> AstId {
-        self.ids += 1;
-        AstId(self.ids)
+    /// Eats the next token no matter what it is granted that it isn't a lex_error or EOF. Need
+    /// those two guarantees (via peek for example) to call this
+    pub(super) fn consume(&mut self) {
+        let tok = self.toks.next().unwrap().unwrap();
+        self.actions.push(Tree::Token { tok })
     }
 }

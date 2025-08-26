@@ -61,7 +61,8 @@ pub enum SyntaxKind {
     Declaration,
     Assignment,
     BinExpr,
-    Literal,
+    AtomExpr,
+    FnDecl,
 
     Error,
     Comment,
